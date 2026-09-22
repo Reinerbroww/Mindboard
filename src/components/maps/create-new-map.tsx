@@ -22,6 +22,7 @@ export function CreateNewMap() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [phase, setPhase] = useState<Phase>("input");
   const [stageIndex, setStageIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +31,19 @@ export function CreateNewMap() {
     if (!selected) return;
     setFile(selected);
     setText("");
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setIsDragging(false);
+    const dropped = e.dataTransfer.files?.[0] ?? null;
+    if (dropped) {
+      if (!dropped.name.toLowerCase().endsWith(".pdf")) {
+        setError("Only PDF files are supported.");
+        return;
+      }
+      handleFile(dropped);
+    }
   }
 
   async function handleGenerate() {
@@ -181,30 +195,56 @@ export function CreateNewMap() {
               className="hidden"
               onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
             />
-            <Button
-              variant={file ? "secondary" : "outline"}
-              size="lg"
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Upload a PDF"
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className="w-full"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              className={`flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+                isDragging
+                  ? "border-primary bg-primary/5"
+                  : "border-border bg-card hover:border-muted-foreground/40"
+              }`}
             >
               {file ? (
                 <>
-                  <FileText className="h-4 w-4" />
-                  {file.name}
+                  <FileText className="h-8 w-8 text-primary" />
+                  <div className="text-sm font-medium">{file.name}</div>
                 </>
               ) : (
                 <>
-                  <Upload className="h-4 w-4" />
-                  Upload PDF
+                  <Upload className="h-8 w-8 text-muted-foreground" />
+                  <div className="text-sm font-medium">
+                    Drag &amp; drop your PDF here
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    or click to browse files (max 10 MB)
+                  </div>
                 </>
               )}
-            </Button>
+            </div>
             {file && (
               <button
                 type="button"
                 className="mt-2 text-xs text-muted-foreground hover:underline"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setFile(null);
                   if (fileInputRef.current) fileInputRef.current.value = "";
                 }}
