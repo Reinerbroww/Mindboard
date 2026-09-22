@@ -62,7 +62,15 @@ export async function POST(request: Request) {
     if (input.type === "pdf") {
       try {
         validatePdfFile({ name: input.file_name });
-        const bytes = Buffer.from(input.fileData, "base64");
+        const { data: file, error } = await supabase.storage
+          .from("materials")
+          .download(input.storagePath);
+
+        if (error || !file) {
+          throw new PdfValidationError("Could not read the uploaded PDF.");
+        }
+
+        const bytes = Buffer.from(await file.arrayBuffer());
         if (bytes.byteLength > 10 * 1024 * 1024) {
           throw new PdfValidationError("PDF file is too large (max 10 MB).");
         }
@@ -86,7 +94,7 @@ export async function POST(request: Request) {
     }
 
     const structure = await generateMapStructure({
-      material: content.slice(0, 100_000),
+      material: content.slice(0, 60_000),
       sourceLabel: input.type === "pdf" ? `PDF: ${fileName}` : "Pasted text",
     });
 

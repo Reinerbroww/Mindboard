@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Upload } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -20,32 +21,61 @@ export function CreateNewMap() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [fileData, setFileData] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [phase, setPhase] = useState<Phase>("input");
   const [stageIndex, setStageIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  function handleFile(file: File | null) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.split(",")[1];
-      setFileData(base64);
-      setFileName(file.name);
-      setText("");
-    };
-    reader.readAsDataURL(file);
+  function handleFile(selected: File | null) {
+    if (!selected) return;
+    setFile(selected);
+    setText("");
   }
 
   async function handleGenerate() {
     setError(null);
 
-    const payload =
-      fileName && fileData
-        ? { type: "pdf", file_name: fileName, fileData }
-        : { type: "text", content: text };
+    let payload:
+      | { type: "pdf"; file_name: string; storagePath: string }
+      | { type: "text"; content: string };
+
+    if (file) {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setError("Please sign in again and retry.");
+        return;
+      }
+
+      const safeName = file.name.replace(/[^A-Za-z0-9._-]/g, "_");
+      const storagePath = `${user.id}/${crypto.randomUUID()}-${safeName}`;
+
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from("materials")
+          .upload(storagePath, file, {
+            contentType: "application/pdf",
+            upsert: false,
+          });
+        if (uploadError) {
+          setError(uploadError.message);
+          return;
+        }
+      } catch {
+        setError("Could not upload the PDF. Try again.");
+        return;
+      }
+
+      payload = {
+        type: "pdf",
+        file_name: file.name,
+        storagePath,
+      };
+    } else {
+      payload = { type: "text", content: text };
+    }
 
     if (payload.type === "text" && !text.trim()) {
       setError("Paste your study material or upload a PDF.");
@@ -66,12 +96,29 @@ export function CreateNewMap() {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      let data: { mapId?: string; error?: string } | null = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Non-JSON response (e.g. platform timeout page) — fall through below.
+      }
 
       if (!res.ok) {
         clearInterval(interval);
         setPhase("input");
-        setError(data.error ?? "Something went wrong. Try again.");
+        setError(
+          data?.error ??
+            (res.status === 504 || res.status === 500
+              ? "The server took too long. Try a smaller PDF or shorter text, then retry."
+              : "Something went wrong. Try again.")
+        );
+        return;
+      }
+
+      if (!data?.mapId) {
+        clearInterval(interval);
+        setPhase("input");
+        setError("Something went wrong. Try again.");
         return;
       }
 
@@ -80,7 +127,9 @@ export function CreateNewMap() {
     } catch {
       clearInterval(interval);
       setPhase("input");
-      setError("Could not reach the server. Please try again.");
+      setError(
+        "Could not reach the server. Check your connection and try again."
+      );
     }
   }
 
@@ -133,16 +182,16 @@ export function CreateNewMap() {
               onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
             />
             <Button
-              variant={fileName ? "secondary" : "outline"}
+              variant={file ? "secondary" : "outline"}
               size="lg"
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="w-full"
             >
-              {fileName ? (
+              {file ? (
                 <>
                   <FileText className="h-4 w-4" />
-                  {fileName}
+                  {file.name}
                 </>
               ) : (
                 <>
@@ -151,20 +200,19 @@ export function CreateNewMap() {
                 </>
               )}
             </Button>
-            {fileName && (
+            {file && (
               <button
                 type="button"
                 className="mt-2 text-xs text-muted-foreground hover:underline"
                 onClick={() => {
-                  setFileName(null);
-                  setFileData(null);
+                  setFile(null);
                   if (fileInputRef.current) fileInputRef.current.value = "";
                 }}
               >
                 Remove file
               </button>
             )}
-            {fileName && (
+            {file && (
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 OR paste text below
               </p>
@@ -185,9 +233,8 @@ export function CreateNewMap() {
               value={text}
               onChange={(e) => {
                 setText(e.target.value);
-                if (fileName) {
-                  setFileName(null);
-                  setFileData(null);
+                if (file) {
+                  setFile(null);
                   if (fileInputRef.current) fileInputRef.current.value = "";
                 }
               }}
@@ -203,7 +250,7 @@ export function CreateNewMap() {
           <Button
             size="lg"
             onClick={handleGenerate}
-            disabled={!text.trim() && !fileName}
+            disabled={!text.trim() && !file}
           >
             Generate Mind Map
           </Button>

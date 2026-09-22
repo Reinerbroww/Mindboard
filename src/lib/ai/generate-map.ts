@@ -1,6 +1,9 @@
 import { generateText, Output } from "ai";
 import type { AiNode, AiEdge } from "@/lib/validation/schemas";
-import { validateAiMapStructure } from "@/lib/validation/schemas";
+import {
+  aiMapStructureSchema,
+  validateAiMapStructure,
+} from "@/lib/validation/schemas";
 import { createAiModel } from "@/lib/ai/model";
 
 interface MapGenerationParams {
@@ -35,71 +38,16 @@ export async function generateMapStructure({
     material,
   ].join("\n");
 
-  const schema = {
-    title: "MindMapStructure",
-    description:
-      "Structured mind map with concepts (nodes) and their relationships (edges).",
-    schema: {
-      type: "object",
-      properties: {
-        title: { type: "string", description: "Short title of the map." },
-        nodes: {
-          type: "array",
-          description: "Concepts extracted from the material.",
-          items: {
-            type: "object",
-            properties: {
-              id: {
-                type: "string",
-                description: "Short unique id like n1, n2.",
-              },
-              label: {
-                type: "string",
-                description: "Short concept name (max 50 chars).",
-              },
-              description: {
-                type: "string",
-                description: "One sentence grounded in the material.",
-              },
-              level: {
-                type: "integer",
-                minimum: 0,
-                description:
-                  "0 = root, 1 = main concept, 2 = sub-concept.",
-              },
-              parentId: {
-                type: ["string", "null"],
-                description: "Id of parent node, null for the root.",
-              },
-            },
-            required: ["id", "label", "description", "level", "parentId"],
-          },
-        },
-        edges: {
-          type: "array",
-          description: "Relationships between concepts.",
-          items: {
-            type: "object",
-            properties: {
-              source: { type: "string" },
-              target: { type: "string" },
-              relationship: {
-                type: "string",
-                description: "Short label like 'includes' or 'depends on'.",
-              },
-            },
-            required: ["source", "target", "relationship"],
-          },
-        },
-      },
-      required: ["title", "nodes", "edges"],
-    },
-  } as const;
-
   const { output } = await generateText({
     model: createAiModel(),
-    output: Output.json(schema),
+    output: Output.object({
+      schema: aiMapStructureSchema,
+      name: "MindMapStructure",
+      description:
+        "Structured mind map with concepts (nodes) and their relationships (edges).",
+    }),
     prompt,
+    maxOutputTokens: 2048,
   });
 
   return validateAiMapStructure(output);

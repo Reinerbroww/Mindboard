@@ -1,6 +1,20 @@
 import { generateText, Output } from "ai";
+import { z } from "zod";
 import type { AiNode } from "@/lib/validation/schemas";
 import { createAiModel } from "@/lib/ai/model";
+
+const expandResultSchema = z.object({
+  nodes: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1).max(255),
+        description: z.string().optional().default(""),
+      })
+    )
+    .min(1)
+    .max(12),
+});
 
 export interface ExpandParams {
   concept: string;
@@ -31,43 +45,18 @@ export async function expandConcept({
     .filter(Boolean)
     .join("\n");
 
-  const schema = {
-    title: "SubConcepts",
-    description: "Sub-concepts for the selected node.",
-    schema: {
-      type: "object",
-      properties: {
-        nodes: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              label: {
-                type: "string",
-                description: "Short concept name (max 50 chars).",
-              },
-              description: {
-                type: "string",
-                description: "One sentence grounded in the material.",
-              },
-            },
-            required: ["id", "label", "description"],
-          },
-        },
-      },
-      required: ["nodes"],
-    },
-  } as const;
-
   const { output } = await generateText({
     model: createAiModel(),
-    output: Output.json(schema),
+    output: Output.object({
+      schema: expandResultSchema,
+      name: "SubConcepts",
+      description: "Sub-concepts for the selected node.",
+    }),
     prompt,
+    maxOutputTokens: 1536,
   });
 
-  const parsedOutput = output as { nodes?: Array<{ id: string; label: string; description?: string }> };
-  const nodes = parsedOutput?.nodes ?? null;
+  const nodes = output.nodes;
   if (!nodes || nodes.length === 0) {
     throw new Error("AI returned an invalid expansion.");
   }

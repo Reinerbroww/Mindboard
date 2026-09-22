@@ -52,8 +52,14 @@ const materialTextSchema = z.object({
 const materialPdfSchema = z.object({
   type: z.literal("pdf"),
   file_name: z.string().min(1).max(255),
-  // Base64 data URL payload; cap well above the 10 MB decoded limit.
-  fileData: z.string().min(1, "PDF file data is required.").max(18_000_000),
+  // Path to the file in Supabase Storage: "<user_id>/<stored>.pdf".
+  storagePath: z
+    .string()
+    .min(1, "PDF storage path is required.")
+    .regex(
+      /^[0-9a-f-]{36}\/[A-Za-z0-9._-]+\.pdf$/i,
+      "Invalid PDF storage path."
+    ),
 });
 
 export const materialInputSchema = z.discriminatedUnion("type", [
