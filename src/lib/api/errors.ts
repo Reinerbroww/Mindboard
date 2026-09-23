@@ -53,5 +53,8 @@ export function errorResponse(err: unknown, fallback = "Something went wrong."):
   }
 
   console.error("[api]", err);
-  return NextResponse.json({ error: fallback }, { status: 500 });
+  return NextResponse.json(
+    { error: fallback, detail: message || "unknown" },
+    { status: 500 },
+  );
 }
