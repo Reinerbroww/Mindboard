@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { RegisterForm } from "@/components/auth/register-form";
+import { Brand } from "@/components/brand";
 
 export const metadata: Metadata = {
   title: "Register",
@@ -11,10 +12,8 @@ export default function RegisterPage() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
       <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <Link href="/" className="text-xl font-semibold tracking-tight">
-            Mindboard
-          </Link>
+        <div className="mb-8 flex flex-col items-center text-center">
+          <Brand large />
           <h1 className="mt-4 text-2xl font-semibold tracking-tight">
             Create Account
           </h1>

@@ -7,6 +7,7 @@ import { getUserMaps } from "@/lib/supabase/queries";
 import { Button } from "@/components/ui/button";
 import { LogoutButton } from "@/components/dashboard/logout-button";
 import { MapCard } from "@/components/dashboard/map-card";
+import { Brand } from "@/components/brand";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -27,9 +28,7 @@ export default async function DashboardPage() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between px-6 py-5 sm:px-10">
-        <Link href="/" className="text-lg font-semibold tracking-tight">
-          Mindboard
-        </Link>
+        <Brand />
         <LogoutButton />
       </header>
 

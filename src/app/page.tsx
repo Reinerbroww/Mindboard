@@ -1,17 +1,13 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Brand } from "@/components/brand";
 
 export default function Home() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between px-6 py-5 sm:px-10">
-        <Link
-          href="/"
-          className="text-lg font-semibold tracking-tight text-foreground"
-        >
-          Mindboard
-        </Link>
+        <Brand />
         <Button variant="ghost" size="sm" asChild>
           <Link href="/login">Login</Link>
         </Button>
