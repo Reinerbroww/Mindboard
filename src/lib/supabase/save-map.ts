@@ -36,29 +36,41 @@ export async function saveGraph(
   mapId: string,
   structure: GenerateMapResult
 ) {
-  // Insert nodes first so parent_id references are valid.
-  const nodeRows = structure.nodes.map((node) => ({
-    map_id: mapId,
-    parent_id: node.parentId,
-    label: node.label,
-    description: node.description || null,
-    position_x: 0,
-    position_y: 0,
-    level: node.level,
-  }));
-
-  const { data: insertedNodes, error: nodesError } = await supabase
-    .from("nodes")
-    .insert(nodeRows)
-    .select("id");
-
-  if (nodesError || !insertedNodes) throw new Error("Could not save nodes.");
-
-  // Map AI ids (n1, n2) to DB row ids.
+  // Insert nodes one at a time, parents first (lower levels sort earlier),
+  // so each parent_id is a real DB id that already exists.
+  const sortedNodes = [...structure.nodes].sort((a, b) => a.level - b.level);
   const orderByLevelAndParent = new Map<string, string>();
-  structure.nodes.forEach((node, index) => {
-    orderByLevelAndParent.set(node.id, insertedNodes[index].id);
-  });
+  const insertedNodes: { id: string }[] = [];
+
+  for (const node of sortedNodes) {
+    const parentId = node.parentId
+      ? orderByLevelAndParent.get(node.parentId) ?? null
+      : null;
+
+    const { data, error } = await supabase
+      .from("nodes")
+      .insert({
+        map_id: mapId,
+        parent_id: parentId,
+        label: node.label,
+        description: node.description || null,
+        position_x: 0,
+        position_y: 0,
+        level: node.level,
+      })
+      .select("id")
+      .single();
+
+    if (error || !data) throw new Error("Could not save nodes.");
+
+    insertedNodes.push(data);
+    orderByLevelAndParent.set(node.id, data.id);
+  }
+
+  // Keep the row order aligned with `structure.nodes` for the caller.
+  const nodeRows = structure.nodes.map((node) => ({
+    id: orderByLevelAndParent.get(node.id) as string,
+  }));
 
   if (structure.edges.length > 0) {
     // Match each AI edge to its DB ids, dropping edges that reference
@@ -89,7 +101,7 @@ export async function saveGraph(
 
     return {
       nodeIdMap: orderByLevelAndParent,
-      nodeRows: insertedNodes,
+      nodeRows: nodeRows,
       edges: structure.edges.map((edge) => ({
         source: orderByLevelAndParent.get(edge.source) ?? null,
         target: orderByLevelAndParent.get(edge.target) ?? null,
@@ -100,7 +112,7 @@ export async function saveGraph(
 
   return {
     nodeIdMap: orderByLevelAndParent,
-    nodeRows: insertedNodes,
+    nodeRows: nodeRows,
     edges: [],
   };
 }

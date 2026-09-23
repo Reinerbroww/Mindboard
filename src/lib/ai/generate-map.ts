@@ -1,10 +1,10 @@
-import { generateText, Output } from "ai";
-import type { AiNode, AiEdge } from "@/lib/validation/schemas";
+import { Output } from "ai";
 import {
   aiMapStructureSchema,
   validateAiMapStructure,
 } from "@/lib/validation/schemas";
-import { createAiModel } from "@/lib/ai/model";
+import type { AiMapStructure, AiNode, AiEdge } from "@/lib/validation/schemas";
+import { generateTextWithRetry } from "@/lib/ai/model";
 
 interface MapGenerationParams {
   material: string;
@@ -38,8 +38,7 @@ export async function generateMapStructure({
     material,
   ].join("\n");
 
-  const { output } = await generateText({
-    model: createAiModel(),
+  const { output } = await generateTextWithRetry<AiMapStructure>({
     output: Output.object({
       schema: aiMapStructureSchema,
       name: "MindMapStructure",

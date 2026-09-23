@@ -1,5 +1,4 @@
-import { generateText } from "ai";
-import { createAiModel } from "@/lib/ai/model";
+import { generateTextWithRetry } from "@/lib/ai/model";
 
 export async function explainConcept(params: {
   concept: string;
@@ -22,8 +21,7 @@ export async function explainConcept(params: {
     .filter(Boolean)
     .join("\n");
 
-  const { text } = await generateText({
-    model: createAiModel(),
+  const { text } = await generateTextWithRetry({
     prompt,
   });
 

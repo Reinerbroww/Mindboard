@@ -1,7 +1,7 @@
-import { generateText, Output } from "ai";
+import { Output } from "ai";
 import { z } from "zod";
 import type { AiNode } from "@/lib/validation/schemas";
-import { createAiModel } from "@/lib/ai/model";
+import { generateTextWithRetry } from "@/lib/ai/model";
 
 const expandResultSchema = z.object({
   nodes: z
@@ -45,8 +45,7 @@ export async function expandConcept({
     .filter(Boolean)
     .join("\n");
 
-  const { output } = await generateText({
-    model: createAiModel(),
+  const { output } = await generateTextWithRetry<z.infer<typeof expandResultSchema>>({
     output: Output.object({
       schema: expandResultSchema,
       name: "SubConcepts",
