@@ -38,6 +38,19 @@ export function isTransientAiError(err: unknown): boolean {
   return false;
 }
 
+export function isModelUnavailableError(err: unknown): boolean {
+  const candidate = err as { statusCode?: number; message?: string };
+  if (typeof candidate?.message !== "string") {
+    return false;
+  }
+  if (candidate.statusCode === 404) {
+    return true;
+  }
+  return /no longer available|not found|not supported|does not exist|MODEL_NOT_FOUND/i.test(
+    candidate.message,
+  );
+}
+
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -62,6 +75,9 @@ export async function generateTextWithRetry<STRUCTURE = unknown>(
         return result as unknown as { output: STRUCTURE; text: string };
       } catch (err) {
         lastError = err;
+        if (isModelUnavailableError(err)) {
+          break;
+        }
         if (!isTransientAiError(err)) {
           throw err;
         }
