@@ -21,6 +21,30 @@ export function errorResponse(err: unknown, fallback = "Something went wrong."):
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
 
+  const message = err instanceof Error ? err.message : "";
+
+  if (/Missing GOOGLE_GENERATIVE_AI_API_KEY/.test(message)) {
+    console.error("[api]", err);
+    return NextResponse.json(
+      {
+        error:
+          "Server setup error: the Google AI API key is missing. Add GOOGLE_GENERATIVE_AI_API_KEY to the Vercel environment variables and redeploy.",
+      },
+      { status: 500 },
+    );
+  }
+
+  if (/model/i.test(message) && /not found|not supported|unavailable|no such/.test(message)) {
+    console.error("[api]", err);
+    return NextResponse.json(
+      {
+        error:
+          "Server setup error: the AI model in GEMINI_MODEL is not available. Set it to gemini-3.6-flash in the Vercel environment variables and redeploy.",
+      },
+      { status: 500 },
+    );
+  }
+
   if (isTransientAiError(err)) {
     return NextResponse.json(
       { error: "The AI service is busy right now. Please try again in a few seconds." },
