@@ -46,6 +46,10 @@ export function errorResponse(err: unknown, fallback = "Something went wrong."):
   }
 
   if (isTransientAiError(err)) {
+    console.error(
+      "[api] AI request exhausted all retries; notifying user that the service is busy. Underlying error:",
+      err,
+    );
     return NextResponse.json(
       { error: "The AI service is busy right now. Please try again in a few seconds." },
       { status: 503 },
