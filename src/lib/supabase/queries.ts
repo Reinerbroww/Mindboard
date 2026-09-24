@@ -9,7 +9,19 @@ export const getUserMaps = cache(async (userId: string) => {
     .eq("user_id", userId)
     .order("updated_at", { ascending: false });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (/JWT issued at future/i.test(error.message)) {
+      console.warn("[supabase] Clock skew warning: JWT issued at future. Retrying...");
+      await new Promise((r) => setTimeout(r, 1000));
+      const retry = await supabase
+        .from("maps")
+        .select("id, title, created_at, updated_at")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false });
+      return retry.data ?? [];
+    }
+    throw new Error(error.message);
+  }
   return data ?? [];
 });
 

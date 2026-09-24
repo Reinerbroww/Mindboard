@@ -46,7 +46,7 @@ export async function generateMapStructure({
         "Structured mind map with concepts (nodes) and their relationships (edges).",
     }),
     prompt,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 8192,
   });
 
   return validateAiMapStructure(output);

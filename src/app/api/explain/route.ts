@@ -7,7 +7,7 @@ import { getMapMaterial } from "@/lib/supabase/queries";
 import { UserFacingError, errorResponse } from "@/lib/api/errors";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 const MAX_BODY_BYTES = 16_000;
 
 export async function POST(request: Request) {

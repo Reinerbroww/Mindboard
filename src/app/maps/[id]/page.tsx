@@ -41,8 +41,8 @@ export default async function MapPage({
   }));
 
   return (
-    <div className="flex h-full w-full flex-col">
-      <header className="flex items-center justify-between border-b border-border bg-card px-5 py-3">
+    <div className="flex h-screen w-screen flex-col overflow-hidden">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-5">
         <Link
           href="/dashboard"
           className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -55,7 +55,7 @@ export default async function MapPage({
         </span>
         <span className="w-20" />
       </header>
-      <div className="min-h-0 flex-1 bg-background">
+      <div className="relative h-[calc(100vh-3.5rem)] w-full flex-1 bg-background">
         <Whiteboard
           mapId={data.map.id}
           mapTitle={data.map.title}

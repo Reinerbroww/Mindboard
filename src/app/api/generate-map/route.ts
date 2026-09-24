@@ -6,6 +6,7 @@ import {
   validatePdfFile,
   PdfValidationError,
 } from "@/lib/pdf/extract";
+import { selectRepresentativeSample } from "@/lib/ai/chunk";
 import { generateMapStructure } from "@/lib/ai/generate-map";
 import { materialInputSchema } from "@/lib/validation/schemas";
 import {
@@ -19,7 +20,7 @@ import {
 } from "@/lib/api/errors";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 const MAX_BODY_BYTES = 18_000_000;
 
 export async function POST(request: Request) {
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
     }
 
     const structure = await generateMapStructure({
-      material: content.slice(0, 60_000),
+      material: selectRepresentativeSample(content),
       sourceLabel: input.type === "pdf" ? `PDF: ${fileName}` : "Pasted text",
     });
 

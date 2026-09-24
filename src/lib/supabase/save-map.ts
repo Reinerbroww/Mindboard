@@ -43,9 +43,10 @@ export async function saveGraph(
   const insertedNodes: { id: string }[] = [];
 
   for (const node of sortedNodes) {
-    const parentId = node.parentId
-      ? orderByLevelAndParent.get(node.parentId) ?? null
-      : null;
+    const parentId =
+      node.parentId && orderByLevelAndParent.has(node.parentId)
+        ? orderByLevelAndParent.get(node.parentId)!
+        : null;
 
     const { data, error } = await supabase
       .from("nodes")
@@ -61,7 +62,10 @@ export async function saveGraph(
       .select("id")
       .single();
 
-    if (error || !data) throw new Error("Could not save nodes.");
+    if (error || !data) {
+      console.error("Save node DB error:", error);
+      throw new Error(`Could not save nodes: ${error?.message || "Unknown error"}`);
+    }
 
     insertedNodes.push(data);
     orderByLevelAndParent.set(node.id, data.id);
@@ -83,7 +87,7 @@ export async function saveGraph(
       }))
       .filter(
         (e): e is { sourceId: string; targetId: string; relationship: string | null } =>
-          e.sourceId !== undefined && e.targetId !== undefined
+          Boolean(e.sourceId && e.targetId)
       );
 
     if (edgeRows.length > 0) {
@@ -96,7 +100,10 @@ export async function saveGraph(
           relationship: e.relationship,
         })));
 
-      if (edgesError) throw new Error("Could not save edges.");
+      if (edgesError) {
+        console.error("Save edges DB error:", edgesError);
+        throw new Error(`Could not save edges: ${edgesError.message}`);
+      }
     }
 
     return {

@@ -24,8 +24,8 @@ export type AiMapStructure = z.infer<typeof aiMapStructureSchema>;
 export type AiNode = z.infer<typeof aiNodeSchema>;
 export type AiEdge = z.infer<typeof aiEdgeSchema>;
 
-const MAX_NODES = 30;
-const MAX_EDGES = 60;
+const MAX_NODES = 100;
+const MAX_EDGES = 200;
 
 export function validateAiMapStructure(input: unknown): AiMapStructure {
   const parsed = aiMapStructureSchema.safeParse(input);

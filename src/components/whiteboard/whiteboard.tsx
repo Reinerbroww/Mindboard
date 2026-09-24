@@ -12,7 +12,8 @@ import {
   type Edge,
   type NodeMouseHandler,
 } from "@xyflow/react";
-import { Expand, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Expand, Sparkles, Trash2 } from "lucide-react";
 import { MindboardNode, type MindboardNodeData } from "@/components/whiteboard/mindboard-node";
 import { computeHierarchicalLayout } from "@/lib/layout/dagre";
 import { Button } from "@/components/ui/button";
@@ -94,6 +95,7 @@ export function Whiteboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const router = useRouter();
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -101,6 +103,8 @@ export function Whiteboard({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [content, setContent] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
@@ -112,6 +116,23 @@ export function Whiteboard({
     },
     [nodes, selectedId]
   );
+
+  async function handleDeleteMap() {
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/maps/${mapId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Delete failed.");
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      setError("Could not delete this map.");
+      setDeleting(false);
+      setConfirmingDelete(false);
+    }
+  }
 
   // Run lay-out once after mount so generated maps get positioned.
   useEffect(() => {
@@ -344,9 +365,44 @@ export function Whiteboard({
               Saved
             </span>
           )}
-          <Button size="sm" onClick={handleSave} disabled={saving}>
+          <Button size="sm" onClick={handleSave} disabled={saving || deleting}>
             {saving ? "Saving..." : "Save"}
           </Button>
+
+          {confirmingDelete ? (
+            <div className="flex items-center gap-1.5 rounded-lg border border-destructive/20 bg-card p-1 shadow-sm">
+              <span className="px-2 text-xs font-medium text-destructive">Delete map?</span>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={handleDeleteMap}
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Yes, Delete"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-muted-foreground hover:text-destructive hover:border-destructive/30"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={saving || deleting}
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+          )}
         </div>
       </div>
     </div>

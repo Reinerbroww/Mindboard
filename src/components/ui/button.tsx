@@ -7,7 +7,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "ghost" | "outline";
+  variant?: "primary" | "secondary" | "ghost" | "outline" | "destructive";
   size?: "sm" | "md" | "lg";
   asChild?: boolean;
 }
@@ -18,6 +18,7 @@ const variants: Record<NonNullable<ButtonProps["variant"]>, string> = {
   ghost: "text-foreground hover:bg-muted",
   outline:
     "border border-border bg-transparent text-foreground hover:bg-muted",
+  destructive: "bg-destructive text-white hover:bg-destructive/90",
 };
 
 const sizes: Record<NonNullable<ButtonProps["size"]>, string> = {

@@ -1,4 +1,4 @@
-import { generateTextWithRetry } from "@/lib/ai/model";
+import { generateTextWithRetry, truncateMaterialForAi } from "@/lib/ai/model";
 
 export async function explainConcept(params: {
   concept: string;
@@ -16,7 +16,7 @@ export async function explainConcept(params: {
     `Concept: ${params.concept}`,
     params.description ? `Stored note: ${params.description}` : "",
     "Material:",
-    params.material.slice(0, 30_000),
+    truncateMaterialForAi(params.material, 16_000),
   ]
     .filter(Boolean)
     .join("\n");

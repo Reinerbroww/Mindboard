@@ -1,7 +1,7 @@
 import { Output } from "ai";
 import { z } from "zod";
 import type { AiNode } from "@/lib/validation/schemas";
-import { generateTextWithRetry } from "@/lib/ai/model";
+import { generateTextWithRetry, truncateMaterialForAi } from "@/lib/ai/model";
 
 const expandResultSchema = z.object({
   nodes: z
@@ -40,7 +40,7 @@ export async function expandConcept({
       ? `Existing concepts (do not repeat these): ${existingLabels.join(", ")}`
       : "",
     "Material:",
-    material.slice(0, 40_000),
+    truncateMaterialForAi(material, 16_000),
   ]
     .filter(Boolean)
     .join("\n");
@@ -52,7 +52,7 @@ export async function expandConcept({
       description: "Sub-concepts for the selected node.",
     }),
     prompt,
-    maxOutputTokens: 1536,
+    maxOutputTokens: 8192,
   });
 
   const nodes = output.nodes;

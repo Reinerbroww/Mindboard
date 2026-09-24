@@ -120,6 +120,10 @@ export function CreateNewMap() {
       if (!res.ok) {
         clearInterval(interval);
         setPhase("input");
+        if (res.status === 401) {
+          router.push("/login?next=/maps/new");
+          return;
+        }
         setError(
           data?.error ??
             (res.status === 504 || res.status === 500
