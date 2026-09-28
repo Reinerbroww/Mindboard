@@ -29,6 +29,12 @@ export function CreateNewMap() {
 
   function handleFile(selected: File | null) {
     if (!selected) return;
+    if (selected.size > 10 * 1024 * 1024) {
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setError("PDF is too large. The maximum file size is 10 MB.");
+      return;
+    }
     setFile(selected);
     setText("");
   }

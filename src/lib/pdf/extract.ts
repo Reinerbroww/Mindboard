@@ -31,7 +31,7 @@ export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
 
   if (!joined) {
     throw new PdfValidationError(
-      "No selectable text found in this PDF. Scanned PDFs are not supported yet."
+      "No selectable text found in this PDF. Scanned PDFs are not supported yet — try a text-based PDF, or copy and paste the text instead."
     );
   }
 

@@ -147,6 +147,22 @@ export function Whiteboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Flag nodes with children (expanded parents) so they render distinctly.
+  useEffect(() => {
+    const parentIds = new Set(edges.map((edge) => edge.source));
+    setNodes((current) => {
+      let changed = false;
+      const next = current.map((node) => {
+        const data = node.data as unknown as MindboardNodeData;
+        const hasChildren = parentIds.has(node.id);
+        if (data.hasChildren === hasChildren) return node;
+        changed = true;
+        return { ...node, data: { ...data, hasChildren } };
+      });
+      return changed ? next : current;
+    });
+  }, [edges, setNodes]);
+
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
     setSelectedId(node.id);
     setPanel(null);
