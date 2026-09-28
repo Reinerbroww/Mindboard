@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FileText, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { Textarea } from "@/components/ui/textarea";
 
 type Phase = "input" | "processing";
@@ -292,9 +293,7 @@ export function CreateNewMap() {
           </div>
 
           {error && (
-            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
+            <ErrorAlert message={error} onRetry={handleGenerate} />
           )}
 
           <Button

@@ -15,6 +15,7 @@ import {
 import { useRouter } from "next/navigation";
 import { Expand, Sparkles, Trash2 } from "lucide-react";
 import { MindboardNode, type MindboardNodeData } from "@/components/whiteboard/mindboard-node";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { computeHierarchicalLayout } from "@/lib/layout/dagre";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -360,7 +361,10 @@ export function Whiteboard({
                 : "Expanding concept..."}
             </p>
           ) : error ? (
-            <p className="text-sm text-destructive">{error}</p>
+            <ErrorAlert
+              message={error}
+              onRetry={panel === "expand" ? handleExpand : handleExplain}
+            />
           ) : (
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
               {content}
