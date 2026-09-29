@@ -48,3 +48,4 @@ dev.log
 dev2.log
 prodsrv.log
 ai-diag.log
+diag-*.log
