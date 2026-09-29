@@ -6,7 +6,6 @@ import { FileText, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/ui/error-alert";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 
 type Phase = "input" | "processing";
@@ -161,34 +160,14 @@ export function CreateNewMap() {
 
   if (phase === "processing") {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-        <div className="flex w-full max-w-xl flex-col items-center">
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-24">
+        <div className="flex flex-col items-center">
           <h1 className="text-2xl font-semibold tracking-tight">
             Creating your map
           </h1>
-
-          <div className="mt-10 w-full overflow-hidden rounded-2xl border border-border bg-card p-8">
-            <div className="flex flex-col items-center">
-              <div className="flex flex-col items-center gap-2">
-                <Skeleton className="h-10 w-44 rounded-full" />
-                <Skeleton className="h-3 w-24 rounded-full" />
-              </div>
-
-              <div className="mt-8 flex w-full items-start justify-center gap-6">
-                <div className="flex flex-1 flex-col items-center gap-3">
-                  <Skeleton className="h-3 w-20" />
-                  <Skeleton className="h-16 w-full rounded-xl" />
-                  <Skeleton className="h-12 w-4/5 rounded-xl" />
-                </div>
-                <div className="flex flex-1 flex-col items-center gap-3">
-                  <Skeleton className="h-3 w-20" />
-                  <Skeleton className="h-16 w-full rounded-xl" />
-                  <Skeleton className="h-12 w-4/5 rounded-xl" />
-                </div>
-              </div>
-            </div>
+          <div className="mt-8 flex h-12 w-12 animate-spin items-center justify-center">
+            <div className="h-10 w-10 rounded-full border-4 border-secondary border-t-primary" />
           </div>
-
           <ul className="mt-8 flex flex-col gap-2">
             {STAGES.map((stage, i) => (
               <li
