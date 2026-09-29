@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { Expand, Sparkles, Trash2 } from "lucide-react";
 import { MindboardNode, type MindboardNodeData } from "@/components/whiteboard/mindboard-node";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { computeHierarchicalLayout } from "@/lib/layout/dagre";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -355,11 +356,18 @@ export function Whiteboard({
             </button>
           </div>
           {loading ? (
-            <p className="text-sm text-muted-foreground">
-              {panel === "explain"
-                ? "Explaining concept..."
-                : "Expanding concept..."}
-            </p>
+            <div className="flex flex-col gap-2.5">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-11/12" />
+              <Skeleton className="h-3 w-3/4" />
+              <div className="mt-2 flex flex-col gap-1.5">
+                <Skeleton className="h-3 w-5/6" />
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-3 w-4/5" />
+                <Skeleton className="h-3 w-3/4" />
+              </div>
+            </div>
           ) : error ? (
             <ErrorAlert
               message={error}

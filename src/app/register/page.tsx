@@ -18,7 +18,7 @@ export default function RegisterPage() {
             Create Account
           </h1>
         </div>
-        <Suspense>
+        <Suspense fallback={<RegisterFormSkeleton />}>
           <RegisterForm />
         </Suspense>
         <p className="mt-6 text-center text-sm text-muted-foreground">
@@ -28,6 +28,26 @@ export default function RegisterPage() {
           </Link>
         </p>
       </div>
+    </div>
+  );
+}
+
+function RegisterFormSkeleton() {
+  return (
+    <div className="flex animate-pulse flex-col gap-5">
+      <div className="flex flex-col gap-2">
+        <div className="h-4 w-16 rounded bg-muted" />
+        <div className="h-10 rounded-lg border border-border bg-card" />
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="h-4 w-16 rounded bg-muted" />
+        <div className="h-10 rounded-lg border border-border bg-card" />
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="h-4 w-16 rounded bg-muted" />
+        <div className="h-10 rounded-lg border border-border bg-card" />
+      </div>
+      <div className="mt-2 h-12 rounded-lg bg-muted" />
     </div>
   );
 }
