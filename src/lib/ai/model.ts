@@ -4,9 +4,10 @@ import { google } from "@ai-sdk/google";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 
 const FALLBACK_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
+  "gemini-3.8-flash",
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
   "gemini-flash-latest",
 ];
 
@@ -251,10 +252,17 @@ export async function generateTextWithRetry<STRUCTURE = unknown>(
         const detail = classifyAiError(err);
         const unavailable = isModelUnavailableError(err);
         const recoverable = isTransientAiError(err) || isParseOrTruncationError(err);
+        // Rate limits resolve in tens of seconds, so retrying the same model is
+        // futile; move straight to the next model to spread quota across models.
         const retrying =
-          recoverable && !unavailable && attempt < maxAttemptsPerModel - 1;
+          recoverable &&
+          !unavailable &&
+          detail.category !== "rate_limit" &&
+          attempt < maxAttemptsPerModel - 1;
         const switchModel =
-          unavailable || (recoverable && attempt >= maxAttemptsPerModel - 1);
+          unavailable ||
+          detail.category === "rate_limit" ||
+          (recoverable && attempt >= maxAttemptsPerModel - 1);
 
         logAiAttempt({
           modelId,

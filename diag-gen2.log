@@ -1,0 +1,13 @@
+
+> mindboard@0.1.0 dev
+> next dev
+
+▲ Next.js 16.3.5 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.56.1:3000
+- Environments: .env.local
+✓ Ready in 1153ms
+✓ Running next.config.ts took 73ms
+
+ POST /api/generate-map 200 in 18.2s (next.js: 455ms, application-code: 17.8s)
+[?25h
