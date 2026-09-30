@@ -21,12 +21,20 @@ const STAGES = [
 export function CreateNewMap() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const generatingRef = useRef(false);
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [phase, setPhase] = useState<Phase>("input");
   const [stageIndex, setStageIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  function newRequestId(): string {
+    if (typeof globalThis.crypto?.randomUUID === "function") {
+      return globalThis.crypto.randomUUID();
+    }
+    return `gen-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
 
   function handleFile(selected: File | null) {
     if (!selected) return;
@@ -54,68 +62,91 @@ export function CreateNewMap() {
   }
 
   async function handleGenerate() {
+    // One id per user action, reused across the whole request lifecycle so
+    // client and server logs can be correlated. The guard also blocks
+    // overlapping clicks (e.g. double-click during a PDF upload) from firing
+    // duplicate POST /api/generate-map requests.
+    if (generatingRef.current) return;
+    generatingRef.current = true;
     setError(null);
 
-    let payload:
-      | { type: "pdf"; file_name: string; storagePath: string }
-      | { type: "text"; content: string };
+    const requestId = newRequestId();
+    console.info(`[CLIENT MAP GENERATION START] requestId=${requestId}`);
 
-    if (file) {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        setError("Please sign in again and retry.");
-        return;
-      }
-
-      const safeName = file.name.replace(/[^A-Za-z0-9._-]/g, "_");
-      const storagePath = `${user.id}/${crypto.randomUUID()}-${safeName}`;
-
-      try {
-        const { error: uploadError } = await supabase.storage
-          .from("materials")
-          .upload(storagePath, file, {
-            contentType: "application/pdf",
-            upsert: false,
-          });
-        if (uploadError) {
-          setError(uploadError.message);
-          return;
-        }
-      } catch {
-        setError("Could not upload the PDF. Try again.");
-        return;
-      }
-
-      payload = {
-        type: "pdf",
-        file_name: file.name,
-        storagePath,
-      };
-    } else {
-      payload = { type: "text", content: text };
-    }
-
-    if (payload.type === "text" && !text.trim()) {
-      setError("Paste your study material or upload a PDF.");
-      return;
-    }
-
-    setPhase("processing");
-    setStageIndex(0);
-
-    const interval = setInterval(() => {
-      setStageIndex((i) => (i + 1) % STAGES.length);
-    }, 2500);
+    let interval: ReturnType<typeof setInterval> | null = null;
 
     try {
+      let payload:
+        | {
+            type: "pdf";
+            file_name: string;
+            storagePath: string;
+            requestId: string;
+          }
+        | { type: "text"; content: string; requestId: string };
+
+      if (file) {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) {
+          setError("Please sign in again and retry.");
+          return;
+        }
+
+        const safeName = file.name.replace(/[^A-Za-z0-9._-]/g, "_");
+        const storagePath = `${user.id}/${crypto.randomUUID()}-${safeName}`;
+
+        try {
+          const { error: uploadError } = await supabase.storage
+            .from("materials")
+            .upload(storagePath, file, {
+              contentType: "application/pdf",
+              upsert: false,
+            });
+          if (uploadError) {
+            setError(uploadError.message);
+            return;
+          }
+        } catch {
+          setError("Could not upload the PDF. Try again.");
+          return;
+        }
+
+        payload = {
+          type: "pdf",
+          file_name: file.name,
+          storagePath,
+          requestId,
+        };
+      } else {
+        payload = { type: "text", content: text, requestId };
+      }
+
+      if (payload.type === "text" && !text.trim()) {
+        setError("Paste your study material or upload a PDF.");
+        return;
+      }
+
+      setPhase("processing");
+      setStageIndex(0);
+
+      interval = setInterval(() => {
+        setStageIndex((i) => (i + 1) % STAGES.length);
+      }, 2500);
+
+      const requestStartedAt = performance.now();
       const res = await fetch("/api/generate-map", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      console.info(
+        `[CLIENT MAP GENERATION RESPONSE] requestId=${requestId} status=${res.status} elapsedMs=${Math.round(
+          performance.now() - requestStartedAt
+        )}`,
+      );
 
       let data: { mapId?: string; error?: string } | null = null;
       try {
@@ -150,11 +181,13 @@ export function CreateNewMap() {
       clearInterval(interval);
       router.push(`/maps/${data.mapId}`);
     } catch {
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
       setPhase("input");
       setError(
         "Could not reach the server. Check your connection and try again."
       );
+    } finally {
+      generatingRef.current = false;
     }
   }
 

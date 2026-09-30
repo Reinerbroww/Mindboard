@@ -49,8 +49,10 @@ function safeMaterialPreview(content: string, max = 80): string {
 }
 
 export async function POST(request: Request) {
-  const requestId =
+  const fallbackRequestId =
     globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  // Reused for all stage logs; replaced by the client id when one is sent.
+  let requestId = fallbackRequestId;
   const startedAt = performance.now();
   const elapsedMs = () => Math.round(performance.now() - startedAt);
 
@@ -80,6 +82,19 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
+
+    // Reuse the client-generated id (one per user action) so client and
+    // server logs correlate; fall back to a server id if the client omits one.
+    const clientRequestId =
+      body && typeof body === "object" &&
+      typeof (body as { requestId?: unknown }).requestId === "string" &&
+      /^[A-Za-z0-9_-]{8,80}$/.test(
+        (body as { requestId: string }).requestId
+      )
+        ? (body as { requestId: string }).requestId
+        : undefined;
+    if (clientRequestId) requestId = clientRequestId;
+
     const parsed = materialInputSchema.safeParse(body);
 
     if (!parsed.success) {
