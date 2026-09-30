@@ -72,7 +72,7 @@ function classify(message: string): ErrorKind {
       tone: "warning",
       icon: AlertTriangle,
       tips: [
-        "Reduce the PDF or text (for example, under 10 MB and 50 pages).",
+        "Reduce the PDF or text (for example, under 50 MB and 50 pages).",
         "Try one chapter or section at a time.",
       ],
     };

@@ -227,70 +227,124 @@ export function truncateMaterialForAi(text: string, maxChars = 16_000): string {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Parses retry-after hints like "38s", "57000ms", or "120" (assumed seconds
+ * when unlabelled) into a number of milliseconds. Returns null when unknown.
+ */
+function parseRetryAfterMs(value: string | null): number | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const ms = trimmed.match(/^([\d.]+)\s*ms$/i);
+  if (ms) return Math.ceil(parseFloat(ms[1]));
+  const s = trimmed.match(/^([\d.]+)\s*(seconds?|s)?$/i);
+  if (s) return Math.ceil(parseFloat(s[1]) * 1000);
+  return null;
+}
+
+/**
  * Runs `generateText` with exponential backoff + jitter retries on transient provider errors
  * (503 / 429 / high-demand / rate-limit / JSON truncation), switching to fallback Gemini models if the
- * primary model keeps failing.
+ * primary model keeps failing. When every model has hit its rate limit, it waits the server's suggested
+ * retry-after (bounded) and makes one final pass so bursts of daily-limit hits usually still succeed.
  */
 export async function generateTextWithRetry<STRUCTURE = unknown>(
   params: { prompt: string; output?: unknown; maxOutputTokens?: number },
   maxAttemptsPerModel = 3,
 ): Promise<{ output: STRUCTURE; text: string }> {
-  let lastError: unknown;
+  const attemptChain = async (): Promise<{
+    result: { output: STRUCTURE; text: string } | null;
+    allRateLimited: boolean;
+    waitMs: number;
+  }> => {
+    let lastError: unknown;
+    let sawRateLimit = false;
+    let maxRetryAfterMs = 0;
 
-  for (const modelId of getAiModelIds()) {
-    for (let attempt = 0; attempt < maxAttemptsPerModel; attempt++) {
-      try {
-        const result = await generateText(
-          { ...params, model: createAiModel(modelId) } as unknown as Parameters<
-            typeof generateText
-          >[0],
-        );
-        return result as unknown as { output: STRUCTURE; text: string };
-      } catch (err) {
-        lastError = err;
+    for (const modelId of getAiModelIds()) {
+      for (let attempt = 0; attempt < maxAttemptsPerModel; attempt++) {
+        try {
+          const result = await generateText(
+            { ...params, model: createAiModel(modelId) } as unknown as Parameters<
+              typeof generateText
+            >[0],
+          );
+          return {
+            result: result as unknown as { output: STRUCTURE; text: string },
+            allRateLimited: false,
+            waitMs: 0,
+          };
+        } catch (err) {
+          lastError = err;
 
-        const detail = classifyAiError(err);
-        const unavailable = isModelUnavailableError(err);
-        const recoverable = isTransientAiError(err) || isParseOrTruncationError(err);
-        // Rate limits resolve in tens of seconds, so retrying the same model is
-        // futile; move straight to the next model to spread quota across models.
-        const retrying =
-          recoverable &&
-          !unavailable &&
-          detail.category !== "rate_limit" &&
-          attempt < maxAttemptsPerModel - 1;
-        const switchModel =
-          unavailable ||
-          detail.category === "rate_limit" ||
-          (recoverable && attempt >= maxAttemptsPerModel - 1);
+          const detail = classifyAiError(err);
+          const unavailable = isModelUnavailableError(err);
+          const recoverable = isTransientAiError(err) || isParseOrTruncationError(err);
+          // Rate limits resolve in tens of seconds, so retrying the same model is
+          // futile; move straight to the next model to spread quota across models.
+          const retrying =
+            recoverable &&
+            !unavailable &&
+            detail.category !== "rate_limit" &&
+            attempt < maxAttemptsPerModel - 1;
+          const switchModel =
+            unavailable ||
+            detail.category === "rate_limit" ||
+            (recoverable && attempt >= maxAttemptsPerModel - 1);
 
-        logAiAttempt({
-          modelId,
-          attempt: attempt + 1,
-          retrying,
-          switchModel,
-          detail,
-        });
+          logAiAttempt({
+            modelId,
+            attempt: attempt + 1,
+            retrying,
+            switchModel,
+            detail,
+          });
 
-        if (unavailable) {
-          break;
-        }
+          if (detail.category === "rate_limit") {
+            sawRateLimit = true;
+            const retryMs = parseRetryAfterMs(detail.retryAfter);
+            if (retryMs) maxRetryAfterMs = Math.max(maxRetryAfterMs, retryMs);
+          }
 
-        if (!recoverable) {
-          throw err;
-        }
+          if (unavailable) {
+            break;
+          }
 
-        if (retrying) {
-          // Exponential backoff with random jitter (e.g. 1.2s, 2.4s, 4.8s + jitter)
-          const baseDelay = 1200;
-          const exponentialDelay = baseDelay * Math.pow(2, attempt);
-          const jitter = Math.random() * 400;
-          const delay = Math.min(exponentialDelay + jitter, 6000);
-          await sleep(delay);
+          if (!recoverable) {
+            throw err;
+          }
+
+          if (retrying) {
+            // Exponential backoff with random jitter (e.g. 1.2s, 2.4s, 4.8s + jitter)
+            const baseDelay = 1200;
+            const exponentialDelay = baseDelay * Math.pow(2, attempt);
+            const jitter = Math.random() * 400;
+            const delay = Math.min(exponentialDelay + jitter, 6000);
+            await sleep(delay);
+          }
         }
       }
     }
+
+    lastError = lastError ?? new Error("AI request failed.");
+    if (sawRateLimit) {
+      return { result: null, allRateLimited: true, waitMs: maxRetryAfterMs };
+    }
+    throw lastError;
+  };
+
+  const first = await attemptChain();
+  if (first.result) return first.result;
+
+  if (first.allRateLimited) {
+    // Wait for the slowest rate limit to clear (bounded) before a final pass.
+    const waitMs = Math.min(Math.max(first.waitMs, 3000), 15000);
+    console.error(
+      `[AI] all models rate-limited; waiting ${Math.round(waitMs / 1000)}s before a final retry.`,
+    );
+    await sleep(waitMs);
+    const second = await attemptChain();
+    if (second.result) return second.result;
+    throw new Error("All AI models are rate-limited right now. Try again in a moment.");
   }
 
-  throw lastError;
+  throw new Error("AI request failed unexpectedly.");
 }

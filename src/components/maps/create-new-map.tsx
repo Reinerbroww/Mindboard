@@ -30,10 +30,10 @@ export function CreateNewMap() {
 
   function handleFile(selected: File | null) {
     if (!selected) return;
-    if (selected.size > 10 * 1024 * 1024) {
+    if (selected.size > 50 * 1024 * 1024) {
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      setError("PDF is too large. The maximum file size is 10 MB.");
+      setError("PDF is too large. The maximum file size is 50 MB.");
       return;
     }
     setFile(selected);
@@ -245,7 +245,7 @@ export function CreateNewMap() {
                     Drag &amp; drop your PDF here
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    or click to browse files (max 10 MB)
+                    or click to browse files (max 50 MB)
                   </div>
                 </>
               )}

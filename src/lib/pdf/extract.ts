@@ -1,6 +1,6 @@
 import { extractText, getDocumentProxy } from "unpdf";
 
-export const MAX_PDF_SIZE = 10 * 1024 * 1024; // 10 MB
+export const MAX_PDF_SIZE = 50 * 1024 * 1024; // 50 MB
 export const MAX_PDF_PAGES = 50;
 export const MAX_EXTRACTED_CHARS = 200_000;
 
@@ -47,7 +47,7 @@ export function validatePdfFile(file: {
     throw new PdfValidationError("Only PDF files are supported.");
   }
   if (typeof file.size === "number" && file.size > MAX_PDF_SIZE) {
-    throw new PdfValidationError("PDF file is too large (max 10 MB).");
+    throw new PdfValidationError("PDF file is too large (max 50 MB).");
   }
 }
 

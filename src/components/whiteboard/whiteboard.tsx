@@ -108,6 +108,7 @@ export function Whiteboard({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [content, setContent] = useState<string>("");
+  const [isCached, setIsCached] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedNode = useMemo(
@@ -169,14 +170,31 @@ export function Whiteboard({
     setSelectedId(node.id);
     setPanel(null);
     setContent("");
+    setIsCached(false);
     setError(null);
   }, []);
 
-  async function handleExplain() {
+  async function runExplain(force = false) {
     if (!selectedId) return;
     setPanel("explain");
-    setContent("");
     setError(null);
+
+    const cacheKey = `mb:explain:${mapId}:${selectedId}`;
+    if (!force) {
+      try {
+        const cachedText = localStorage.getItem(cacheKey);
+        if (cachedText) {
+          setContent(cachedText);
+          setIsCached(true);
+          return;
+        }
+      } catch {
+        // Storage unavailable — fall through to the API.
+      }
+    }
+
+    setContent("");
+    setIsCached(false);
     setLoading(true);
     try {
       const res = await fetch("/api/explain", {
@@ -187,11 +205,20 @@ export function Whiteboard({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Explain failed.");
       setContent(data.explanation);
+      try {
+        localStorage.setItem(cacheKey, data.explanation);
+      } catch {
+        // Storage full or unavailable — the answer still shows.
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Explain failed.");
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleExplain() {
+    runExplain(false);
   }
 
   async function handleExpand() {
@@ -374,9 +401,25 @@ export function Whiteboard({
               onRetry={panel === "expand" ? handleExpand : handleExplain}
             />
           ) : (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-              {content}
-            </p>
+            <>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+                {content}
+              </p>
+              {isCached && (
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2">
+                  <span className="text-[11px] text-muted-foreground/70">
+                    Shown from memory to save AI usage.
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-primary hover:underline"
+                    onClick={() => runExplain(true)}
+                  >
+                    Regenerate
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

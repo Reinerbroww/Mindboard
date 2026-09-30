@@ -5,6 +5,7 @@ import {
   extractPdfText,
   validatePdfFile,
   PdfValidationError,
+  MAX_PDF_SIZE,
 } from "@/lib/pdf/extract";
 import { selectRepresentativeSample } from "@/lib/ai/chunk";
 import { generateMapStructure } from "@/lib/ai/generate-map";
@@ -72,8 +73,8 @@ export async function POST(request: Request) {
         }
 
         const bytes = Buffer.from(await file.arrayBuffer());
-        if (bytes.byteLength > 10 * 1024 * 1024) {
-          throw new PdfValidationError("PDF file is too large (max 10 MB).");
+        if (bytes.byteLength > MAX_PDF_SIZE) {
+          throw new PdfValidationError("PDF file is too large (max 50 MB).");
         }
         content = await extractPdfText(bytes.buffer);
         fileName = input.file_name;
