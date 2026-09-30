@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  Hourglass,
   Info,
   RefreshCw,
   ShieldAlert,
@@ -66,7 +67,19 @@ function classify(message: string): ErrorKind {
     };
   }
 
-  if (/too large|too big|10 mb|too long|took too long|smaller/i.test(m)) {
+  if (/server took too long|timed out|timeout|took too long|504|slow to respond/i.test(m)) {
+    return {
+      title: "The server is taking too long",
+      tone: "warning",
+      icon: Hourglass,
+      tips: [
+        "The AI is busy right now — wait a moment and try again.",
+        "If it keeps happening, try one chapter or section at a time.",
+      ],
+    };
+  }
+
+  if (/too large|too big|10 mb|50 mb|reduce the pdf|smaller/i.test(m)) {
     return {
       title: "Your input is too large",
       tone: "warning",

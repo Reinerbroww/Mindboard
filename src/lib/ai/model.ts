@@ -278,17 +278,17 @@ export async function generateTextWithRetry<STRUCTURE = unknown>(
           const detail = classifyAiError(err);
           const unavailable = isModelUnavailableError(err);
           const recoverable = isTransientAiError(err) || isParseOrTruncationError(err);
-          // Rate limits resolve in tens of seconds, so retrying the same model is
-          // futile; move straight to the next model to spread quota across models.
-          const retrying =
-            recoverable &&
-            !unavailable &&
-            detail.category !== "rate_limit" &&
-            attempt < maxAttemptsPerModel - 1;
-          const switchModel =
+          // Traffic errors (429/503) hit all models at once and resolve slowly, so
+          // retrying the same model is wasteful; rotate to the next model right away.
+          const switchNow =
             unavailable ||
             detail.category === "rate_limit" ||
-            (recoverable && attempt >= maxAttemptsPerModel - 1);
+            detail.category === "service_unavailable";
+          const retrying =
+            recoverable &&
+            !switchNow &&
+            attempt < maxAttemptsPerModel - 1;
+          const switchModel = !retrying;
 
           logAiAttempt({
             modelId,
@@ -336,7 +336,7 @@ export async function generateTextWithRetry<STRUCTURE = unknown>(
 
   if (first.allRateLimited) {
     // Wait for the slowest rate limit to clear (bounded) before a final pass.
-    const waitMs = Math.min(Math.max(first.waitMs, 3000), 15000);
+    const waitMs = Math.min(Math.max(first.waitMs, 3000), 10000);
     console.error(
       `[AI] all models rate-limited; waiting ${Math.round(waitMs / 1000)}s before a final retry.`,
     );

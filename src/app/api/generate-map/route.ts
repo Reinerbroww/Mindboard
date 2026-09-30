@@ -21,7 +21,7 @@ import {
 } from "@/lib/api/errors";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 
-export const maxDuration = 120;
+export const maxDuration = 60;
 const MAX_BODY_BYTES = 18_000_000;
 
 export async function POST(request: Request) {
