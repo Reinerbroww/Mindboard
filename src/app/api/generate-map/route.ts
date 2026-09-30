@@ -25,10 +25,37 @@ import { checkRateLimit } from "@/lib/security/rate-limit";
 export const maxDuration = 60;
 const MAX_BODY_BYTES = 18_000_000;
 
+/** Collapse whitespace/control chars to keep log lines single-line and safe. */
+function sanitizeLogValue(value: string, max: number): string {
+  return value
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/[^\x20-\x7E]/g, "?")
+    .slice(0, max);
+}
+
+function errorTypeOf(err: unknown): string {
+  if (err instanceof Error) return err.name || "Error";
+  return typeof err;
+}
+
+function errorMessageOf(err: unknown): string {
+  const text = err instanceof Error ? err.message : String(err);
+  return sanitizeLogValue(text, 200) || "unknown error";
+}
+
+/** Diagnostics only. Never logs API keys, tokens, cookies, or the full material. */
+function safeMaterialPreview(content: string, max = 80): string {
+  return sanitizeLogValue(content, max);
+}
+
 export async function POST(request: Request) {
   const requestId =
     globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
   const startedAt = performance.now();
+  const elapsedMs = () => Math.round(performance.now() - startedAt);
+
+  // The stage active when an error is thrown; set before each awaited phase.
+  let failureStage = "unknown";
 
   const auth = await requireUser();
   if ("error" in auth) {
@@ -66,6 +93,7 @@ export async function POST(request: Request) {
     let content = "";
     let fileName: string | null = null;
 
+    failureStage = "material-extraction";
     if (input.type === "pdf") {
       try {
         validatePdfFile({ name: input.file_name });
@@ -101,13 +129,21 @@ export async function POST(request: Request) {
     }
 
     const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+    const aiStartAt = performance.now();
     console.error(
       `[MAP GENERATION START] ${[
         `requestId=${requestId}`,
+        `elapsedMs=${elapsedMs()}`,
         `inputType=${input.type}`,
         `materialLength=${content.length}`,
         `model=${model}`,
+        `materialPreview=${JSON.stringify(safeMaterialPreview(content))}`,
       ].join(" ")}`,
+    );
+
+    failureStage = "ai-generation";
+    console.error(
+      `[AI GENERATION START] requestId=${requestId} elapsedMs=${elapsedMs()}`,
     );
 
     const sample = selectRepresentativeSample(content);
@@ -116,10 +152,29 @@ export async function POST(request: Request) {
       sourceLabel: input.type === "pdf" ? `PDF: ${fileName}` : "Pasted text",
       requestId,
     });
+
     console.error(
-      `[MAP GENERATION AI] requestId=${requestId} elapsedMs=${Math.round(
-        performance.now() - startedAt
-      )} nodeCount=${structure.nodes.length} model=${model}`,
+      `[AI GENERATION SUCCESS] ${[
+        `requestId=${requestId}`,
+        `elapsedMs=${elapsedMs()}`,
+        `aiElapsedMs=${Math.round(performance.now() - aiStartAt)}`,
+        `model=${model}`,
+      ].join(" ")}`,
+    );
+
+    failureStage = "map-parse";
+    console.error(
+      `[MAP PARSE SUCCESS] ${[
+        `requestId=${requestId}`,
+        `elapsedMs=${elapsedMs()}`,
+        `nodeCount=${structure.nodes.length}`,
+        `title=${JSON.stringify(sanitizeLogValue(structure.title, 80))}`,
+      ].join(" ")}`,
+    );
+
+    failureStage = "map-save";
+    console.error(
+      `[MAP SAVE START] requestId=${requestId} elapsedMs=${elapsedMs()}`,
     );
 
     const mapId = await createMapForUser(supabase, auth.user.id, structure.title);
@@ -134,10 +189,14 @@ export async function POST(request: Request) {
       mapId,
       structure
     );
+
     console.error(
-      `[MAP GENERATION DB] requestId=${requestId} elapsedMs=${Math.round(
-        performance.now() - startedAt
-      )}`,
+      `[MAP SAVE SUCCESS] ${[
+        `requestId=${requestId}`,
+        `elapsedMs=${elapsedMs()}`,
+        `mapId=${mapId}`,
+        `nodeCount=${structure.nodes.length}`,
+      ].join(" ")}`,
     );
 
     const nodes = structure.nodes.map((node, index) => ({
@@ -147,15 +206,6 @@ export async function POST(request: Request) {
       level: node.level,
       parentId: node.parentId ? nodeIdMap.get(node.parentId) ?? null : null,
     }));
-
-    console.error(
-      `[MAP GENERATION SUCCESS] ${[
-        `requestId=${requestId}`,
-        `model=${model}`,
-        `totalElapsedMs=${Math.round(performance.now() - startedAt)}`,
-        `nodeCount=${structure.nodes.length}`,
-      ].join(" ")}`,
-    );
 
     return NextResponse.json({
       mapId,
@@ -171,10 +221,13 @@ export async function POST(request: Request) {
     console.error(
       `[MAP GENERATION FAILURE] ${[
         `requestId=${requestId}`,
+        `elapsedMs=${elapsedMs()}`,
+        `stage=${failureStage}`,
+        `errorType=${errorTypeOf(err)}`,
+        `errorMessage=${JSON.stringify(errorMessageOf(err))}`,
         `category=${category}`,
         `status=${aiStatus}`,
         `model=${err instanceof AiServiceError ? err.model ?? "-" : "-"}`,
-        `totalElapsedMs=${Math.round(performance.now() - startedAt)}`,
       ].join(" ")}`,
     );
     return errorResponse(err, "Could not generate your mind map.");

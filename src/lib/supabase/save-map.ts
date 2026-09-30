@@ -12,7 +12,11 @@ export async function createMapForUser(
     .select("id")
     .single();
 
-  if (error || !data) throw new Error("Could not create map.");
+  if (error || !data) {
+    console.error(`[DB] createMapForUser failed. ${error ? `code=${error.code} ${error.message}` : "no row returned"}`);
+    if (error) throw new Error(`Could not create map: ${error.code ?? ""} ${error.message}`);
+    throw new Error("Could not create map: insert returned no row.");
+  }
   return data.id as string;
 }
 
@@ -28,7 +32,10 @@ export async function saveMaterial(
     file_name: input.file_name ?? null,
   });
 
-  if (error) throw new Error("Could not save material.");
+  if (error) {
+    console.error(`[DB] saveMaterial failed. code=${error.code} ${error.message}`);
+    throw new Error(`Could not save material: ${error.code ?? ""} ${error.message}`);
+  }
 }
 
 export async function saveGraph(
