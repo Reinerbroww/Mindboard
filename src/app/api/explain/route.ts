@@ -5,12 +5,17 @@ import { explainConcept } from "@/lib/ai/explain";
 import { explainInputSchema } from "@/lib/validation/schemas";
 import { getMapMaterial } from "@/lib/supabase/queries";
 import { UserFacingError, errorResponse } from "@/lib/api/errors";
+import { AiServiceError } from "@/lib/ai/model";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 
 export const maxDuration = 60;
 const MAX_BODY_BYTES = 16_000;
 
 export async function POST(request: Request) {
+  const requestId =
+    globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const startedAt = performance.now();
+
   const auth = await requireUser();
   if ("error" in auth) {
     return errorResponse(new UserFacingError(auth.error.message, 401), "Unauthorized.");
@@ -62,14 +67,31 @@ export async function POST(request: Request) {
 
     const material = await getMapMaterial(mapId);
 
+    console.error(
+      `[EXPLAIN START] requestId=${requestId} node=${node.label} materialLength=${material?.content?.length ?? 0}`,
+    );
+
     const explanation = await explainConcept({
       concept: node.label,
       description: node.description,
       material: material?.content ?? "",
+      requestId,
     });
+    console.error(
+      `[EXPLAIN SUCCESS] requestId=${requestId} totalElapsedMs=${Math.round(
+        performance.now() - startedAt
+      )}`,
+    );
 
     return NextResponse.json({ explanation });
   } catch (err) {
+    const category = err instanceof AiServiceError ? err.category : "unknown";
+    const aiStatus = err instanceof AiServiceError ? err.status ?? "-" : "-";
+    console.error(
+      `[EXPLAIN FAILURE] requestId=${requestId} category=${category} status=${aiStatus} totalElapsedMs=${Math.round(
+        performance.now() - startedAt
+      )}`,
+    );
     return errorResponse(err, "Could not explain this concept.");
   }
 }

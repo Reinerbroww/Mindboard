@@ -20,12 +20,14 @@ export interface ExpandParams {
   concept: string;
   material: string;
   existingLabels: string[];
+  requestId?: string;
 }
 
 export async function expandConcept({
   concept,
   material,
   existingLabels,
+  requestId,
 }: ExpandParams): Promise<AiNode[]> {
   const prompt = [
     "You are a study assistant expanding a concept in a knowledge map.",
@@ -35,6 +37,7 @@ export async function expandConcept({
     "- Ground every sub-concept in the material provided. Do not invent concepts.",
     "- Avoid duplicating existing concept labels.",
     "- Use unique ids like e1, e2, e3.",
+    "- Respond with ONLY the structured output. No prose or explanations.",
     `Selected concept: ${concept}`,
     existingLabels.length
       ? `Existing concepts (do not repeat these): ${existingLabels.join(", ")}`
@@ -45,15 +48,18 @@ export async function expandConcept({
     .filter(Boolean)
     .join("\n");
 
-  const { output } = await generateTextWithRetry<z.infer<typeof expandResultSchema>>({
-    output: Output.object({
-      schema: expandResultSchema,
-      name: "SubConcepts",
-      description: "Sub-concepts for the selected node.",
-    }),
-    prompt,
-    maxOutputTokens: 8192,
-  });
+  const { output } = await generateTextWithRetry<z.infer<typeof expandResultSchema>>(
+    {
+      output: Output.object({
+        schema: expandResultSchema,
+        name: "SubConcepts",
+        description: "Sub-concepts for the selected node.",
+      }),
+      prompt,
+      maxOutputTokens: 2048,
+    },
+    { requestId },
+  );
 
   const nodes = output.nodes;
   if (!nodes || nodes.length === 0) {

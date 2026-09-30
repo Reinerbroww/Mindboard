@@ -19,12 +19,17 @@ import {
   UserFacingError,
   errorResponse,
 } from "@/lib/api/errors";
+import { AiServiceError } from "@/lib/ai/model";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 
 export const maxDuration = 60;
 const MAX_BODY_BYTES = 18_000_000;
 
 export async function POST(request: Request) {
+  const requestId =
+    globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const startedAt = performance.now();
+
   const auth = await requireUser();
   if ("error" in auth) {
     return errorResponse(new UserFacingError(auth.error.message, 401), "Unauthorized.");
@@ -95,10 +100,27 @@ export async function POST(request: Request) {
       );
     }
 
+    const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+    console.error(
+      `[MAP GENERATION START] ${[
+        `requestId=${requestId}`,
+        `inputType=${input.type}`,
+        `materialLength=${content.length}`,
+        `model=${model}`,
+      ].join(" ")}`,
+    );
+
+    const sample = selectRepresentativeSample(content);
     const structure = await generateMapStructure({
-      material: selectRepresentativeSample(content),
+      material: sample,
       sourceLabel: input.type === "pdf" ? `PDF: ${fileName}` : "Pasted text",
+      requestId,
     });
+    console.error(
+      `[MAP GENERATION AI] requestId=${requestId} elapsedMs=${Math.round(
+        performance.now() - startedAt
+      )} nodeCount=${structure.nodes.length} model=${model}`,
+    );
 
     const mapId = await createMapForUser(supabase, auth.user.id, structure.title);
     await saveMaterial(supabase, mapId, {
@@ -112,6 +134,11 @@ export async function POST(request: Request) {
       mapId,
       structure
     );
+    console.error(
+      `[MAP GENERATION DB] requestId=${requestId} elapsedMs=${Math.round(
+        performance.now() - startedAt
+      )}`,
+    );
 
     const nodes = structure.nodes.map((node, index) => ({
       id: nodeRows[index].id,
@@ -121,6 +148,15 @@ export async function POST(request: Request) {
       parentId: node.parentId ? nodeIdMap.get(node.parentId) ?? null : null,
     }));
 
+    console.error(
+      `[MAP GENERATION SUCCESS] ${[
+        `requestId=${requestId}`,
+        `model=${model}`,
+        `totalElapsedMs=${Math.round(performance.now() - startedAt)}`,
+        `nodeCount=${structure.nodes.length}`,
+      ].join(" ")}`,
+    );
+
     return NextResponse.json({
       mapId,
       title: structure.title,
@@ -128,6 +164,19 @@ export async function POST(request: Request) {
       edges,
     });
   } catch (err) {
+    const category =
+      err instanceof AiServiceError ? err.category : "unknown";
+    const aiStatus =
+      err instanceof AiServiceError ? err.status ?? "-" : "-";
+    console.error(
+      `[MAP GENERATION FAILURE] ${[
+        `requestId=${requestId}`,
+        `category=${category}`,
+        `status=${aiStatus}`,
+        `model=${err instanceof AiServiceError ? err.model ?? "-" : "-"}`,
+        `totalElapsedMs=${Math.round(performance.now() - startedAt)}`,
+      ].join(" ")}`,
+    );
     return errorResponse(err, "Could not generate your mind map.");
   }
 }

@@ -42,7 +42,7 @@ function classify(message: string): ErrorKind {
     };
   }
 
-  if (/busy right now|try again in a few seconds|too many requests|try again in a minute|quota|rate limit/i.test(m)) {
+  if (/busy right now|try again in a few seconds|too many requests|try again in a minute|quota|rate limit|rate-limited|temporarily unavailable|model .*unavailable/i.test(m)) {
     return {
       title: "The AI service is busy",
       tone: "warning",
@@ -67,9 +67,9 @@ function classify(message: string): ErrorKind {
     };
   }
 
-  if (/server took too long|timed out|timeout|took too long|504|slow to respond/i.test(m)) {
+  if (/server took too long|timed out|timeout|took too long|504|too long to generate|slow to respond/i.test(m)) {
     return {
-      title: "The server is taking too long",
+      title: "The AI is taking too long",
       tone: "warning",
       icon: Hourglass,
       tips: [
@@ -100,16 +100,16 @@ function classify(message: string): ErrorKind {
     };
   }
 
-  if (/server setup error|api key|gemini_model|google_generative_ai_api_key/i.test(m)) {
+  if (/server setup error|api key|gemini_model|google_generative_ai_api_key|contact the administrator|not configured/i.test(m)) {
     return {
       title: "Temporary server issue",
       tone: "danger",
       icon: ShieldAlert,
-      tips: ["Please try again later.", "If it continues, contact support."],
+      tips: ["Please try again later.", "If it continues, contact the administrator."],
     };
   }
 
-  if (/only .* supported|invalid|try again\./i.test(m)) {
+  if (/only .* supported|invalid|could not be processed|try another document|try again\./i.test(m)) {
     return {
       title: "Let's fix that input",
       tone: "warning",

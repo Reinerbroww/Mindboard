@@ -5,12 +5,17 @@ import { expandConcept } from "@/lib/ai/expand";
 import { expandInputSchema } from "@/lib/validation/schemas";
 import { getMapMaterial } from "@/lib/supabase/queries";
 import { UserFacingError, errorResponse } from "@/lib/api/errors";
+import { AiServiceError } from "@/lib/ai/model";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 
 export const maxDuration = 60;
 const MAX_BODY_BYTES = 16_000;
 
 export async function POST(request: Request) {
+  const requestId =
+    globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const startedAt = performance.now();
+
   const auth = await requireUser();
   if ("error" in auth) {
     return errorResponse(new UserFacingError(auth.error.message, 401), "Unauthorized.");
@@ -69,11 +74,21 @@ export async function POST(request: Request) {
     const material = await getMapMaterial(mapId);
     const materialContent = material?.content ?? "";
 
+    console.error(
+      `[EXPAND START] requestId=${requestId} node=${node.label} materialLength=${materialContent.length}`,
+    );
+
     const nodes = await expandConcept({
       concept: node.label,
       material: materialContent,
       existingLabels,
+      requestId,
     });
+    console.error(
+      `[EXPAND AI] requestId=${requestId} elapsedMs=${Math.round(
+        performance.now() - startedAt
+      )} newNodes=${nodes.length}`,
+    );
 
     if (nodes.length === 0) {
       return errorResponse(
@@ -104,8 +119,21 @@ export async function POST(request: Request) {
       );
     }
 
+    console.error(
+      `[EXPAND SUCCESS] requestId=${requestId} totalElapsedMs=${Math.round(
+        performance.now() - startedAt
+      )}`,
+    );
+
     return NextResponse.json({ nodes: inserted });
   } catch (err) {
+    const category = err instanceof AiServiceError ? err.category : "unknown";
+    const aiStatus = err instanceof AiServiceError ? err.status ?? "-" : "-";
+    console.error(
+      `[EXPAND FAILURE] requestId=${requestId} category=${category} status=${aiStatus} totalElapsedMs=${Math.round(
+        performance.now() - startedAt
+      )}`,
+    );
     return errorResponse(err, "Could not expand this concept.");
   }
 }

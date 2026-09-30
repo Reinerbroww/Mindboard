@@ -4,6 +4,7 @@ export async function explainConcept(params: {
   concept: string;
   description: string | null;
   material: string;
+  requestId?: string;
 }): Promise<string> {
   const prompt = [
     "You are a patient teacher helping a student with their study material.",
@@ -44,9 +45,13 @@ export async function explainConcept(params: {
     .filter(Boolean)
     .join("\n");
 
-  const { text } = await generateTextWithRetry({
-    prompt,
-  });
+  const { text } = await generateTextWithRetry(
+    {
+      prompt,
+      maxOutputTokens: 2048,
+    },
+    { requestId: params.requestId },
+  );
 
   return text.trim();
 }

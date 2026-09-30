@@ -9,6 +9,7 @@ import { generateTextWithRetry } from "@/lib/ai/model";
 interface MapGenerationParams {
   material: string;
   sourceLabel: string;
+  requestId?: string;
 }
 
 export interface GenerateMapResult {
@@ -20,6 +21,7 @@ export interface GenerateMapResult {
 export async function generateMapStructure({
   material,
   sourceLabel,
+  requestId,
 }: MapGenerationParams): Promise<GenerateMapResult> {
   const prompt = [
     "You are an expert study assistant that builds knowledge maps from learning material.",
@@ -32,22 +34,26 @@ export async function generateMapStructure({
     "- Keep the total number of nodes between 3 and 12.",
     "- Every edge's source and target must reference existing node ids.",
     "- Write short, accurate descriptions grounded in the material.",
+    "- Respond with ONLY the structured output. Do not include explanations, commentary, or Markdown.",
     "",
     `Material source: ${sourceLabel}`,
     "Material:",
     material,
   ].join("\n");
 
-  const { output } = await generateTextWithRetry<AiMapStructure>({
-    output: Output.object({
-      schema: aiMapStructureSchema,
-      name: "MindMapStructure",
-      description:
-        "Structured mind map with concepts (nodes) and their relationships (edges).",
-    }),
-    prompt,
-    maxOutputTokens: 8192,
-  });
+  const { output } = await generateTextWithRetry<AiMapStructure>(
+    {
+      output: Output.object({
+        schema: aiMapStructureSchema,
+        name: "MindMapStructure",
+        description:
+          "Structured mind map with concepts (nodes) and their relationships (edges).",
+      }),
+      prompt,
+      maxOutputTokens: 4096,
+    },
+    { requestId },
+  );
 
   return validateAiMapStructure(output);
 }
