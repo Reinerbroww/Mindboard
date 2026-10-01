@@ -5,9 +5,16 @@ export async function explainConcept(params: {
   description: string | null;
   material: string;
   requestId?: string;
+  language?: "en" | "id";
 }): Promise<string> {
+  const langInstr =
+    params.language === "id"
+      ? "Generate all user-facing content in Indonesian. Use natural Indonesian terms appropriate for learning."
+      : "Generate all user-facing content in English.";
   const prompt = [
     "You are a patient teacher helping a student with their study material.",
+    "",
+    langInstr,
     "",
     "The student clicked a node in their knowledge map. Explain this concept to them in a simple, friendly way, as you would in a classroom:",
     "CONCEPT: " + params.concept,

@@ -13,13 +13,15 @@ import {
   type NodeMouseHandler,
 } from "@xyflow/react";
 import { useRouter } from "next/navigation";
-import { Expand, Sparkles, Trash2 } from "lucide-react";
+import { Expand, Sparkles, Trash2, GitBranch } from "lucide-react";
 import { MindboardNode, type MindboardNodeData } from "@/components/whiteboard/mindboard-node";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LanguageToggle } from "@/components/ui/language-toggle";
 import { computeHierarchicalLayout } from "@/lib/layout/dagre";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/lib/language";
 
 export interface WhiteboardNode {
   id: string;
@@ -98,11 +100,14 @@ export function Whiteboard({
   }, []);
 
   const router = useRouter();
+  const { language, setLanguage } = useLanguage(mapId);
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"explain" | "expand" | null>(null);
+  const [panel, setPanel] = useState<"explain" | "explain-connection" | "expand" | null>(null);
   const [loading, setLoading] = useState(false);
+  const [actionInFlight, setActionInFlight] = useState<"explain" | "explain-connection" | "expand" | null>(null);
+  const [notification, setNotification] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -119,6 +124,11 @@ export function Whiteboard({
     },
     [nodes, selectedId]
   );
+
+  const showSuccessNotification = (text: string, duration = 2400) => {
+    setNotification(text);
+    setTimeout(() => setNotification((current) => (current === text ? null : current)), duration);
+  };
 
   async function handleDeleteMap() {
     setDeleting(true);
@@ -176,16 +186,19 @@ export function Whiteboard({
 
   async function runExplain(force = false) {
     if (!selectedId) return;
+    if (!force && (loading || actionInFlight)) return;
     setPanel("explain");
     setError(null);
+    setActionInFlight("explain");
 
-    const cacheKey = `mb:explain:${mapId}:${selectedId}`;
+    const cacheKey = `mb:explain:${mapId}:${selectedId}:${language}`;
     if (!force) {
       try {
         const cachedText = localStorage.getItem(cacheKey);
         if (cachedText) {
           setContent(cachedText);
           setIsCached(true);
+          setActionInFlight(null);
           return;
         }
       } catch {
@@ -200,7 +213,7 @@ export function Whiteboard({
       const res = await fetch("/api/explain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mapId, nodeId: selectedId }),
+        body: JSON.stringify({ mapId, nodeId: selectedId, language }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Explain failed.");
@@ -214,6 +227,7 @@ export function Whiteboard({
       setError(err instanceof Error ? err.message : "Explain failed.");
     } finally {
       setLoading(false);
+      setActionInFlight(null);
     }
   }
 
@@ -222,16 +236,17 @@ export function Whiteboard({
   }
 
   async function handleExpand() {
-    if (!selectedId) return;
+    if (!selectedId || loading || actionInFlight) return;
     setPanel("expand");
     setContent("");
     setError(null);
     setLoading(true);
+    setActionInFlight("expand");
     try {
       const res = await fetch("/api/expand", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mapId, nodeId: selectedId }),
+        body: JSON.stringify({ mapId, nodeId: selectedId, language }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Expand failed.");
@@ -281,10 +296,12 @@ export function Whiteboard({
       });
 
       setSaved(false);
+      showSuccessNotification(language === "id" ? "Expand berhasil" : "Expanded successfully");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Expand failed.");
     } finally {
       setLoading(false);
+      setActionInFlight(null);
     }
   }
 
@@ -318,6 +335,54 @@ export function Whiteboard({
     }
   }
 
+  async function handleExplainConnection() {
+    if (!selectedId || loading || actionInFlight) return;
+    if (!selectedNode) return;
+
+    const parentIdViaEdge =
+      edges.find((e) => e.target === selectedId)?.source ?? null;
+    const parent = parentIdViaEdge ? nodes.find((n) => n.id === parentIdViaEdge) : null;
+
+    if (!parent) {
+      setPanel("explain-connection");
+      setContent(
+        language === "id"
+          ? "Ini adalah konsep utama, jadi tidak ada hubungan dengan parent yang bisa dijelaskan."
+          : "This is a root concept, so there is no parent connection to explain."
+      );
+      setError(null);
+      setLoading(false);
+      setActionInFlight(null);
+      return;
+    }
+
+    setPanel("explain-connection");
+    setContent("");
+    setError(null);
+    setLoading(true);
+    setActionInFlight("explain-connection");
+    try {
+      const res = await fetch("/api/explain-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mapId,
+          nodeId: selectedId,
+          parentNodeId: parent.id,
+          language,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Explain connection failed.");
+      setContent(data.explanation);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Explain connection failed.");
+    } finally {
+      setLoading(false);
+      setActionInFlight(null);
+    }
+  }
+
   return (
     <div className="relative h-full w-full">
       <ReactFlow
@@ -341,12 +406,12 @@ export function Whiteboard({
       {selectedNode && (
         <div className="absolute left-4 top-4 z-10 flex max-w-xs flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm">
           <span className="text-sm font-medium">{selectedNode.data.label}</span>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="secondary"
               size="sm"
               onClick={handleExplain}
-              disabled={loading}
+              disabled={loading || !!actionInFlight}
             >
               <Sparkles className="h-4 w-4" />
               Explain
@@ -354,17 +419,28 @@ export function Whiteboard({
             <Button
               variant="secondary"
               size="sm"
+              onClick={handleExplainConnection}
+              disabled={loading || !!actionInFlight}
+            >
+              <GitBranch className="h-4 w-4" />
+              Explain Connection
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleExpand}
-              disabled={loading}
+              disabled={loading || !!actionInFlight}
             >
               <Expand className="h-4 w-4" />
-              Expand
+              {loading && actionInFlight === "expand"
+                ? (language === "id" ? "Membangkitkan..." : "Generating...")
+                : "Expand"}
             </Button>
           </div>
         </div>
       )}
 
-      {(panel === "explain" || panel === "expand") && (
+      {(panel === "explain" || panel === "explain-connection" || panel === "expand") && (
         <div
           className={cn(
             "absolute left-4 top-32 z-10 max-h-[60vh] w-[min(90vw,26rem)] overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-sm"
@@ -372,7 +448,7 @@ export function Whiteboard({
         >
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm font-semibold capitalize">
-              {panel === "explain" ? "Explain" : "Expand"}
+              {panel === "explain" ? "Explain" : panel === "explain-connection" ? "Explain Connection" : "Expand"}
             </span>
             <button
               type="button"
@@ -398,7 +474,13 @@ export function Whiteboard({
           ) : error ? (
             <ErrorAlert
               message={error}
-              onRetry={panel === "expand" ? handleExpand : handleExplain}
+              onRetry={
+                panel === "expand"
+                  ? handleExpand
+                  : panel === "explain-connection"
+                    ? handleExplainConnection
+                    : handleExplain
+              }
             />
           ) : (
             <>
@@ -424,11 +506,23 @@ export function Whiteboard({
         </div>
       )}
 
+      {notification && (
+        <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center">
+          <div className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-foreground shadow-sm">
+            {notification}
+          </div>
+        </div>
+      )}
       <div className="pointer-events-none absolute inset-0 z-10 flex items-end justify-between p-4">
         <div className="pointer-events-auto flex items-center gap-3">
           <span className="max-w-[40vw] truncate text-sm font-medium text-foreground/80">
             {mapTitle}
           </span>
+          <LanguageToggle
+            mapId={mapId}
+            language={language}
+            onLanguageChange={setLanguage}
+          />
         </div>
         <div className="pointer-events-auto flex items-center gap-2">
           {saved && (

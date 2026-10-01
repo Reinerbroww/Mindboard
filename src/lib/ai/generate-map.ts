@@ -10,6 +10,7 @@ interface MapGenerationParams {
   material: string;
   sourceLabel: string;
   requestId?: string;
+  language?: "en" | "id";
 }
 
 export interface GenerateMapResult {
@@ -22,9 +23,17 @@ export async function generateMapStructure({
   material,
   sourceLabel,
   requestId,
+  language = "en",
 }: MapGenerationParams): Promise<GenerateMapResult> {
+  const langInstr =
+    language === "id"
+      ? "Generate all user-facing content in Indonesian. Use natural Indonesian terms appropriate for learning."
+      : "Generate all user-facing content in English.";
   const prompt = [
     "You are an expert study assistant that builds knowledge maps from learning material.",
+    "",
+    langInstr,
+    "Do not translate only the final text — the entire knowledge map must be in the selected language.",
     "",
     "Rules:",
     "- Extract concepts ONLY from the provided material. Never invent concepts not supported by the material.",

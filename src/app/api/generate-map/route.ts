@@ -95,6 +95,12 @@ export async function POST(request: Request) {
         : undefined;
     if (clientRequestId) requestId = clientRequestId;
 
+    const language = (body && typeof body === "object" &&
+      ((body as { language?: unknown }).language === "id" ||
+        (body as { language?: unknown }).language === "en"))
+      ? (body as { language: "en" | "id" }).language
+      : "en";
+
     const parsed = materialInputSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -153,6 +159,7 @@ export async function POST(request: Request) {
         `materialLength=${content.length}`,
         `model=${model}`,
         `materialPreview=${JSON.stringify(safeMaterialPreview(content))}`,
+        `language=${language}`,
       ].join(" ")}`,
     );
 
@@ -166,6 +173,7 @@ export async function POST(request: Request) {
       material: sample,
       sourceLabel: input.type === "pdf" ? `PDF: ${fileName}` : "Pasted text",
       requestId,
+      language,
     });
 
     console.error(

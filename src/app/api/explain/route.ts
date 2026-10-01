@@ -67,6 +67,12 @@ export async function POST(request: Request) {
 
     const material = await getMapMaterial(mapId);
 
+    const language = (body && typeof body === "object" &&
+      ((body as { language?: unknown }).language === "id" ||
+        (body as { language?: unknown }).language === "en"))
+      ? (body as { language: "en" | "id" }).language
+      : "en";
+
     console.error(
       `[EXPLAIN START] requestId=${requestId} node=${node.label} materialLength=${material?.content?.length ?? 0}`,
     );
@@ -76,6 +82,7 @@ export async function POST(request: Request) {
       description: node.description,
       material: material?.content ?? "",
       requestId,
+      language,
     });
     console.error(
       `[EXPLAIN SUCCESS] requestId=${requestId} totalElapsedMs=${Math.round(

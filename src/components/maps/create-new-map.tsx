@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Textarea } from "@/components/ui/textarea";
+import { LanguageToggle } from "@/components/ui/language-toggle";
+import { useLanguage, setMapLanguage } from "@/lib/language";
 
 type Phase = "input" | "processing";
 
@@ -22,6 +24,7 @@ export function CreateNewMap() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const generatingRef = useRef(false);
+  const { language, setLanguage } = useLanguage();
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -82,8 +85,9 @@ export function CreateNewMap() {
             file_name: string;
             storagePath: string;
             requestId: string;
+            language: "en" | "id";
           }
-        | { type: "text"; content: string; requestId: string };
+        | { type: "text"; content: string; requestId: string; language: "en" | "id" };
 
       if (file) {
         const supabase = createClient();
@@ -119,9 +123,10 @@ export function CreateNewMap() {
           file_name: file.name,
           storagePath,
           requestId,
+          language,
         };
       } else {
-        payload = { type: "text", content: text, requestId };
+        payload = { type: "text", content: text, requestId, language };
       }
 
       if (payload.type === "text" && !text.trim()) {
@@ -178,6 +183,7 @@ export function CreateNewMap() {
         return;
       }
 
+      setMapLanguage(data.mapId, language);
       clearInterval(interval);
       router.push(`/maps/${data.mapId}`);
     } catch {
@@ -231,6 +237,10 @@ export function CreateNewMap() {
         </p>
 
         <div className="mt-8 flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Language</span>
+            <LanguageToggle language={language} onLanguageChange={setLanguage} />
+          </div>
           <div>
             <input
               ref={fileInputRef}

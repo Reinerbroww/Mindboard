@@ -21,6 +21,7 @@ export interface ExpandParams {
   material: string;
   existingLabels: string[];
   requestId?: string;
+  language?: "en" | "id";
 }
 
 export async function expandConcept({
@@ -28,9 +29,16 @@ export async function expandConcept({
   material,
   existingLabels,
   requestId,
+  language = "en",
 }: ExpandParams): Promise<AiNode[]> {
+  const langInstr =
+    language === "id"
+      ? "Generate all user-facing content in Indonesian. Use natural Indonesian terms appropriate for learning."
+      : "Generate all user-facing content in English.";
   const prompt = [
     "You are a study assistant expanding a concept in a knowledge map.",
+    "",
+    langInstr,
     "",
     "Rules:",
     "- Generate 3 to 6 sub-concepts that are directly related to the selected concept.",

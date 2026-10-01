@@ -42,6 +42,11 @@ export async function POST(request: Request) {
     }
 
     const { mapId, nodeId } = parsed.data;
+    const language = (body && typeof body === "object" &&
+      ((body as { language?: unknown }).language === "id" ||
+        (body as { language?: unknown }).language === "en"))
+      ? (body as { language: "en" | "id" }).language
+      : "en";
 
     // Verify ownership before doing any AI work.
     const { data: map } = await supabase
@@ -83,6 +88,7 @@ export async function POST(request: Request) {
       material: materialContent,
       existingLabels,
       requestId,
+      language,
     });
     console.error(
       `[EXPAND AI] requestId=${requestId} elapsedMs=${Math.round(
