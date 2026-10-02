@@ -41,20 +41,20 @@ export default async function MapPage({
   }));
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-5">
-        <Link
-          href="/dashboard"
-          className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Dashboard
-        </Link>
-        <span className="truncate px-4 text-sm font-medium text-foreground">
-          {data.map.title}
-        </span>
-        <span className="w-20" />
-      </header>
+<div className="flex h-screen w-screen flex-col overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4 sm:px-5">
+          <Link
+            href="/dashboard"
+            className="flex shrink-0 items-center gap-1 rounded-md px-1 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">Dashboard</span>
+          </Link>
+          <h1 className="min-w-0 truncate text-center text-sm font-medium text-foreground">
+            {data.map.title}
+          </h1>
+          <span className="w-9 shrink-0 sm:w-20" />
+        </header>
       <div className="relative h-[calc(100vh-3.5rem)] w-full flex-1 bg-background">
         <Whiteboard
           mapId={data.map.id}

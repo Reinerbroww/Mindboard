@@ -25,6 +25,28 @@ export const getUserMaps = cache(async (userId: string) => {
   return data ?? [];
 });
 
+export const getMapGraphSummaries = cache(async (userId: string) => {
+  const supabase = await createClient();
+  const { data: maps } = await supabase
+    .from("maps")
+    .select("id")
+    .eq("user_id", userId);
+
+  const mapIds = (maps ?? []).map((m) => m.id);
+  if (mapIds.length === 0) return new Map<string, number>();
+
+  const { data: nodes } = await supabase
+    .from("nodes")
+    .select("map_id, level")
+    .in("map_id", mapIds);
+
+  const counts = new Map<string, number>();
+  (nodes ?? []).forEach((node) => {
+    counts.set(node.map_id, (counts.get(node.map_id) ?? 0) + 1);
+  });
+  return counts;
+});
+
 export const getMapWithNodesAndEdges = cache(async (mapId: string) => {
   const supabase = await createClient();
   const { data: map, error: mapError } = await supabase

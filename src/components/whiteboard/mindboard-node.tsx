@@ -8,6 +8,12 @@ export interface MindboardNodeData {
   description?: string | null;
   level: number;
   hasChildren?: boolean;
+  /** Dimmed while another node is selected. */
+  dimmed?: boolean;
+  /** Direct parent/child of the selected node. */
+  related?: boolean;
+  /** Added by Expand — brief entrance + emphasis. */
+  isNew?: boolean;
 }
 
 type MindboardNode = NodeProps & {
@@ -15,20 +21,30 @@ type MindboardNode = NodeProps & {
 };
 
 const byLevel = {
-  0: "border-primary bg-primary text-primary-foreground font-semibold",
-  1: "border-primary/30 bg-secondary text-secondary-foreground",
+  0: "border-primary bg-primary text-primary-foreground",
+  1: "border-primary/25 bg-secondary text-secondary-foreground",
   2: "border-border bg-card text-foreground",
 } as const;
 
-export function MindboardNode({ data, isConnectable }: MindboardNode) {
+export function MindboardNode({ data, isConnectable, selected }: MindboardNode) {
   const level = Math.min(Math.max(data.level, 0), 2) as 0 | 1 | 2;
   const isParent = data.hasChildren === true;
+
   return (
     <div
       className={cn(
-        "relative min-w-[160px] max-w-[220px] rounded-xl border px-4 py-3 shadow-sm transition-shadow",
+        "group relative min-w-[160px] max-w-[220px] rounded-xl border px-4 py-3",
+        "transition-[box-shadow,border-color,opacity,transform] duration-200 ease-out",
+        "motion-reduce:transition-none",
         byLevel[level],
-        isParent && "border-amber-400/80 shadow-md ring-2 ring-amber-400/25"
+        // Expanded parents read as expandable without leaving the palette.
+        isParent && level !== 0 && "shadow-[0_1px_2px_rgb(38_51_46/0.06)]",
+        !selected && "hover:border-primary/40 hover:shadow-[0_4px_16px_rgb(38_51_46/0.08)]",
+        selected &&
+          "border-primary shadow-[0_0_0_2px_rgb(47_111_94/0.18),0_8px_24px_rgb(38_51_46/0.10)]",
+        data.related && !selected && "border-primary/45",
+        data.dimmed && "opacity-45 saturate-[0.75]",
+        data.isNew && "mb-pop"
       )}
     >
       <Handle
@@ -37,17 +53,36 @@ export function MindboardNode({ data, isConnectable }: MindboardNode) {
         isConnectable={isConnectable}
         className="!bg-primary/40"
       />
-      {isParent && (
-        <span className="absolute -top-2.5 right-2 z-10 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950 shadow-sm">
-          Parent
-        </span>
-      )}
-      <span className="block text-sm leading-snug">{data.label}</span>
+
+      <span
+        className={cn(
+          "block leading-snug",
+          level === 0 ? "text-[15px] font-semibold" : "text-sm font-medium"
+        )}
+      >
+        {data.label}
+      </span>
+
       {data.description && (
         <span className="mt-1 block text-xs leading-snug opacity-70">
           {data.description}
         </span>
       )}
+
+      {isParent && (
+        <span
+          className={cn(
+            "absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border",
+            level === 0
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-primary/25 bg-accent text-primary"
+          )}
+          title="This concept can be expanded"
+        >
+          <span className="text-xs font-semibold leading-none">+</span>
+        </span>
+      )}
+
       <Handle
         type="source"
         position={Position.Bottom}

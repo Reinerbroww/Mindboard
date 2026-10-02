@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils";
 export interface ErrorAlertProps {
   message: string;
   onRetry?: () => void;
+  /** Compact form for in-panel use, where the alert should not dominate. */
+  compact?: boolean;
 }
 
 interface ErrorKind {
@@ -121,9 +123,46 @@ function classify(message: string): ErrorKind {
   return danger;
 }
 
-export function ErrorAlert({ message, onRetry }: ErrorAlertProps) {
+export function ErrorAlert({ message, onRetry, compact = false }: ErrorAlertProps) {
   const kind = classify(message);
   const Icon = kind.icon;
+
+  if (compact) {
+    return (
+      <div
+        role="alert"
+        className={cn(
+          "flex flex-col gap-2.5 rounded-lg border px-3.5 py-3",
+          kind.tone === "danger"
+            ? "border-destructive/25 bg-destructive/5"
+            : "border-primary/20 bg-accent/40"
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <Icon
+            className={cn(
+              "h-4 w-4 shrink-0",
+              kind.tone === "danger" ? "text-destructive" : "text-primary"
+            )}
+          />
+          <p className="text-xs font-semibold text-foreground">{kind.title}</p>
+        </div>
+
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          {kind.tips[0]}
+        </p>
+
+        {onRetry && (
+          <div>
+            <Button size="sm" variant="outline" onClick={onRetry}>
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              Try again
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

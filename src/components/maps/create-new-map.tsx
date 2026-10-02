@@ -8,17 +8,41 @@ import { Button } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Textarea } from "@/components/ui/textarea";
 import { LanguageToggle } from "@/components/ui/language-toggle";
-import { useLanguage, setMapLanguage } from "@/lib/language";
+import { useLanguage, setMapLanguage, type AppLanguage as Language } from "@/lib/language";
 
 type Phase = "input" | "processing";
 
-const STAGES = [
-  "Reading your material...",
-  "Finding key concepts...",
-  "Understanding relationships...",
-  "Building your knowledge map...",
-  "Drawing your mind map...",
-];
+const STAGES: Record<Language, string[]> = {
+  en: [
+    "Reading your material...",
+    "Finding key concepts...",
+    "Understanding relationships...",
+    "Building your knowledge map...",
+    "Drawing your mind map...",
+  ],
+  id: [
+    "Membaca materi kamu...",
+    "Mencari konsep utama...",
+    "Memahami hubungan konsep...",
+    "Membangun peta pengetahuan...",
+    "Menggambar mind map...",
+  ],
+};
+
+const COPY: Record<Language, Record<string, string>> = {
+  en: {
+    title: "Add your study material",
+    subtitle: "Mindboard will turn it into an interactive mind map.",
+    language: "Language",
+    generate: "Generate Mind Map",
+  },
+  id: {
+    title: "Tambahkan materi belajar",
+    subtitle: "Mindboard akan mengubahnya menjadi mind map interaktif.",
+    language: "Bahasa",
+    generate: "Buat Mind Map",
+  },
+};
 
 export function CreateNewMap() {
   const router = useRouter();
@@ -31,6 +55,8 @@ export function CreateNewMap() {
   const [phase, setPhase] = useState<Phase>("input");
   const [stageIndex, setStageIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const stages = STAGES[language];
+  const copy = COPY[language];
 
   function newRequestId(): string {
     if (typeof globalThis.crypto?.randomUUID === "function") {
@@ -137,8 +163,10 @@ export function CreateNewMap() {
       setPhase("processing");
       setStageIndex(0);
 
+      // Advances through the stages once and then holds on the last one, so the
+      // display never implies work that has not happened yet.
       interval = setInterval(() => {
-        setStageIndex((i) => (i + 1) % STAGES.length);
+        setStageIndex((i) => Math.min(i + 1, stages.length - 1));
       }, 2500);
 
       const requestStartedAt = performance.now();
@@ -201,26 +229,67 @@ export function CreateNewMap() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-24">
         <div className="flex flex-col items-center">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Creating your map
-          </h1>
-          <div className="mt-8 flex h-12 w-12 animate-spin items-center justify-center">
-            <div className="h-10 w-10 rounded-full border-4 border-secondary border-t-primary" />
-          </div>
-          <ul className="mt-8 flex flex-col gap-2">
-            {STAGES.map((stage, i) => (
+          <h2 className="text-2xl font-semibold tracking-tight">
+            {language === "id" ? "Membuat mind map kamu" : "Creating your map"}
+          </h2>
+
+          {/* The structure materialising, mirroring the real generation flow. */}
+          <svg
+            viewBox="0 0 200 96"
+            aria-hidden="true"
+            className="mt-8 h-24 w-50 text-primary"
+          >
+            <g
+              stroke="currentColor"
+              strokeOpacity="0.25"
+              strokeWidth="1.4"
+              fill="none"
+              className="mb-pulse"
+            >
+              <path d="M100 34 L52 72" />
+              <path d="M100 34 L148 72" />
+            </g>
+            <rect
+              x="72"
+              y="18"
+              width="56"
+              height="18"
+              rx="9"
+              fill="currentColor"
+              fillOpacity="0.9"
+            />
+            <g
+              fill="var(--accent)"
+              stroke="currentColor"
+              strokeOpacity="0.4"
+              strokeWidth="1.4"
+            >
+              <rect x="34" y="70" width="36" height="16" rx="8" />
+              <rect x="130" y="70" width="36" height="16" rx="8" />
+            </g>
+          </svg>
+
+          <ol className="mt-9 flex w-full max-w-xs flex-col gap-2.5">
+            {stages.map((stage, i) => (
               <li
                 key={stage}
-                className={`text-center text-sm transition-opacity ${
+                className={`flex items-center gap-2.5 text-sm transition-opacity duration-300 motion-reduce:transition-none ${
                   i === stageIndex
-                    ? "text-foreground opacity-100"
-                    : "text-muted-foreground opacity-50"
+                    ? "text-foreground"
+                    : i < stageIndex
+                      ? "text-muted-foreground/70"
+                      : "text-muted-foreground/40"
                 }`}
               >
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full transition-colors duration-300 motion-reduce:transition-none ${
+                    i === stageIndex ? "bg-primary" : "bg-border"
+                  }`}
+                />
                 {stage}
               </li>
             ))}
-          </ul>
+          </ol>
         </div>
       </div>
     );
@@ -229,18 +298,22 @@ export function CreateNewMap() {
   return (
     <div className="flex flex-1 flex-col">
       <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Add your study material
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Mindboard will turn it into an interactive mind map.
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight">
+              {copy.title}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{copy.subtitle}</p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <LanguageToggle language={language} onLanguageChange={setLanguage} />
+            <span className="text-[11px] text-muted-foreground/80">
+              {copy.language}
+            </span>
+          </div>
+        </div>
 
         <div className="mt-8 flex flex-col gap-6">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Language</span>
-            <LanguageToggle language={language} onLanguageChange={setLanguage} />
-          </div>
           <div>
             <input
               ref={fileInputRef}
@@ -270,10 +343,10 @@ export function CreateNewMap() {
                   fileInputRef.current?.click();
                 }
               }}
-              className={`flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+              className={`flex cursor-pointer flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center transition-[border-color,background-color] duration-200 motion-reduce:transition-none ${
                 isDragging
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-card hover:border-muted-foreground/40"
+                  ? "border-primary bg-accent/40"
+                  : "border-border bg-card hover:border-primary/35 hover:bg-accent/20"
               }`}
             >
               {file ? (
@@ -341,10 +414,11 @@ export function CreateNewMap() {
 
           <Button
             size="lg"
+            className="self-start"
             onClick={handleGenerate}
             disabled={!text.trim() && !file}
           >
-            Generate Mind Map
+            {copy.generate}
           </Button>
         </div>
       </main>
