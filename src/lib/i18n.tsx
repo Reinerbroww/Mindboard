@@ -53,7 +53,7 @@ const MESSAGES = {
 
     "panel.explain": "Explanation",
     "panel.explainConnection": "Connection guide",
-    "panel.expand": "More detail",
+    "panel.expand": "What each new concept means",
     "panel.close": "Close",
     "panel.connectionLoading": "Building the connection guide...",
     "panel.connectionEmpty": "No connection guide for this node yet.",
@@ -63,6 +63,7 @@ const MESSAGES = {
     "panel.connectionExample": "Example",
     "panel.connectionTakeaway": "Key takeaway",
     "panel.expandCached": "Shown from memory. Expand for more.",
+    "expand.empty": "No new concepts were added.",
     "panel.connectionCached": "Shown from memory. Explain again to refresh.",
     "panel.regenerate": "Explain again",
 
@@ -169,7 +170,7 @@ const MESSAGES = {
 
     "panel.explain": "Penjelasan",
     "panel.explainConnection": "Panduan hubungan",
-    "panel.expand": "Detail lanjutan",
+    "panel.expand": "Arti tiap konsep baru",
     "panel.close": "Tutup",
     "panel.connectionLoading": "Menyusun panduan hubungan...",
     "panel.connectionEmpty": "Belum ada panduan hubungan untuk node ini.",
@@ -179,6 +180,7 @@ const MESSAGES = {
     "panel.connectionExample": "Contoh",
     "panel.connectionTakeaway": "Poin utama",
     "panel.expandCached": "Ditampilkan dari memori. Perluas untuk detail.",
+    "expand.empty": "Tidak ada konsep baru yang ditambahkan.",
     "panel.connectionCached": "Ditampilkan dari memori. Jelaskan lagi untuk menyegarkan.",
     "panel.regenerate": "Jelaskan lagi",
 

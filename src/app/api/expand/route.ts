@@ -61,7 +61,7 @@ export async function POST(request: Request) {
 
     const { data: node } = await supabase
       .from("nodes")
-      .select("id, map_id, label, level")
+      .select("id, map_id, label, description, level")
       .eq("id", nodeId)
       .single();
 
@@ -71,10 +71,13 @@ export async function POST(request: Request) {
 
     const { data: existingNodes } = await supabase
       .from("nodes")
-      .select("label")
+      .select("id, label, parent_id")
       .eq("map_id", mapId);
 
     const existingLabels = (existingNodes ?? []).map((n) => n.label);
+    const siblingLabels = (existingNodes ?? [])
+      .filter((n) => n.parent_id === nodeId)
+      .map((n) => n.label);
 
     const material = await getMapMaterial(mapId);
     const materialContent = material?.content ?? "";
@@ -87,6 +90,7 @@ export async function POST(request: Request) {
       concept: node.label,
       material: materialContent,
       existingLabels,
+      siblingLabels,
       requestId,
       language,
     });
@@ -103,6 +107,8 @@ export async function POST(request: Request) {
       );
     }
 
+    // The card keeps the short description; the longer teaching text is
+    // returned to the client rather than stored, so it stays cheap to save.
     const nodeRows = nodes.map((n) => ({
       map_id: mapId,
       parent_id: nodeId,
@@ -125,13 +131,28 @@ export async function POST(request: Request) {
       );
     }
 
+    // Zip the generated explanations onto the rows that were actually saved.
+    const explanations = new Map(nodes.map((n) => [n.label, n]));
+    const expanded = inserted.map((row) => {
+      const explanation = explanations.get(row.label);
+      return {
+        id: row.id,
+        label: row.label,
+        description: row.description ?? "",
+        level: row.level,
+        detail: explanation?.detail ?? "",
+        whyItMatters: explanation?.whyItMatters ?? "",
+        ...(explanation?.example ? { example: explanation.example } : {}),
+      };
+    });
+
     console.error(
-      `[EXPAND SUCCESS] requestId=${requestId} totalElapsedMs=${Math.round(
+      `[EXPAND SUCCESS] requestId=${requestId} newNodes=${expanded.length} totalElapsedMs=${Math.round(
         performance.now() - startedAt
       )}`,
     );
 
-    return NextResponse.json({ nodes: inserted });
+    return NextResponse.json({ nodes: expanded });
   } catch (err) {
     const category = err instanceof AiServiceError ? err.category : "unknown";
     const aiStatus = err instanceof AiServiceError ? err.status ?? "-" : "-";

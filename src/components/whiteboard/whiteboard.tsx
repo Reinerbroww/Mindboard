@@ -21,6 +21,7 @@ import {
   Expand,
   GitBranch,
   Lightbulb,
+  Plus,
   Quote,
   Sparkles,
   Target,
@@ -37,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { useMapLanguage } from "@/lib/language";
 import { useI18n } from "@/lib/i18n";
 import type { ConnectionNote } from "@/lib/connection-note";
+import type { ExpandedConcept } from "@/lib/ai/expand";
 
 export interface WhiteboardNode {
   id: string;
@@ -149,6 +151,66 @@ function ConnectionNoteView({ note }: { note: ConnectionNote | null }) {
   );
 }
 
+/**
+ * Renders what Expand just added: for each new node, what the concept means
+ * and why it sits under the concept that was expanded.
+ */
+function ExpandedConceptsView({ concepts }: { concepts: ExpandedConcept[] }) {
+  const { t } = useI18n();
+
+  if (concepts.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">{t("expand.empty")}</p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      {concepts.map((concept) => (
+        <section
+          key={concept.id}
+          className="rounded-lg border border-border bg-card p-3.5"
+        >
+          <div className="flex items-start gap-2">
+            <span className="mt-1 flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-primary">
+              <Plus className="h-2.5 w-2.5" aria-hidden="true" />
+            </span>
+            <h4 className="min-w-0 text-sm font-semibold text-foreground">
+              {concept.label}
+            </h4>
+          </div>
+
+          {concept.detail && (
+            <p className="mt-2 text-sm leading-relaxed text-foreground/90">
+              {concept.detail}
+            </p>
+          )}
+
+          {concept.whyItMatters && (
+            <div className="mt-2.5 flex gap-2 border-l-2 border-primary/25 pl-2.5">
+              <GitBranch className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {concept.whyItMatters}
+              </p>
+            </div>
+          )}
+
+          {concept.example && (
+            <div className="mt-2.5 rounded-md bg-muted/50 px-2.5 py-2">
+              <SectionHeading icon={<Quote className="h-3.5 w-3.5" />}>
+                {t("panel.connectionExample")}
+              </SectionHeading>
+              <p className="text-xs leading-relaxed text-foreground/85">
+                {concept.example}
+              </p>
+            </div>
+          )}
+        </section>
+      ))}
+    </div>
+  );
+}
+
 function SectionHeading({
   icon,
   children,
@@ -242,6 +304,7 @@ export function Whiteboard({
   const [deleting, setDeleting] = useState(false);
   const [content, setContent] = useState<string>("");
   const [connectionNote, setConnectionNote] = useState<ConnectionNote | null>(null);
+  const [expandedConcepts, setExpandedConcepts] = useState<ExpandedConcept[] | null>(null);
   const [isCached, setIsCached] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [freshNodeIds, setFreshNodeIds] = useState<string[]>([]);
@@ -424,6 +487,7 @@ export function Whiteboard({
     setPanel(null);
     setContent("");
     setConnectionNote(null);
+    setExpandedConcepts(null);
     setIsCached(false);
     setError(null);
     setConnectionEdgeId(null);
@@ -487,6 +551,7 @@ export function Whiteboard({
     setPanel("expand");
     setContent("");
     setConnectionNote(null);
+    setExpandedConcepts(null);
     setError(null);
     setLoading(true);
     setActionInFlight("expand");
@@ -499,16 +564,18 @@ export function Whiteboard({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? ui("notify.expandFailed"));
 
+      // Each new concept carries its own explanation of what it means.
+      const generated: ExpandedConcept[] = data.nodes;
+      setExpandedConcepts(generated);
+
       const parentLevel = selectedNode?.data.level ?? 0;
-      const incoming: WhiteboardNode[] = data.nodes.map(
-        (n: { id: string; label: string; description?: string | null; level?: number }) => ({
-          id: n.id,
-          label: n.label,
-          description: n.description ?? null,
-          level: n.level ?? parentLevel + 1,
-          parentId: selectedId,
-        })
-      );
+      const incoming: WhiteboardNode[] = generated.map((n) => ({
+        id: n.id,
+        label: n.label,
+        description: n.description ?? null,
+        level: n.level ?? parentLevel + 1,
+        parentId: selectedId,
+      }));
 
       const existingNodeIds = new Set(nodes.map((n) => n.id));
       const added = toFlowNodes(
@@ -783,7 +850,9 @@ export function Whiteboard({
                 aria-label={
                   panel === "explain-connection"
                     ? ui("panel.connectionLoading")
-                    : ui("create.generating")
+                    : panel === "expand"
+                      ? ui("create.generating")
+                      : ui("panel.explain")
                 }
               >
                 <Skeleton className="h-4 w-28" />
@@ -813,6 +882,8 @@ export function Whiteboard({
               <>
                 {panel === "explain-connection" ? (
                   <ConnectionNoteView note={connectionNote} />
+                ) : panel === "expand" ? (
+                  <ExpandedConceptsView concepts={expandedConcepts ?? []} />
                 ) : (
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
                     {content}
