@@ -43,6 +43,41 @@ export async function POST(
 
     const { nodes } = parsed.data;
 
+    // A stored AI answer describes a specific label and description. If either
+    // changed, the saved answer no longer matches the node, so drop it and let
+    // the next request regenerate. Positions moving is fine and keeps answers.
+    const { data: beforeNodes } = await supabase
+      .from("nodes")
+      .select("id, label, description")
+      .eq("map_id", id);
+    const staleNodeIds = nodes
+      .filter((node) => {
+        const previous = (beforeNodes ?? []).find((n) => n.id === node.id);
+        if (!previous) return false;
+        return (
+          previous.label !== node.label ||
+          (previous.description ?? null) !== (node.description ?? null)
+        );
+      })
+      .map((node) => node.id);
+
+    if (staleNodeIds.length > 0) {
+      const { error: staleError } = await supabase
+        .from("node_ai_content")
+        .delete()
+        .eq("map_id", id)
+        .in("node_id", staleNodeIds);
+      if (staleError) {
+        // Not fatal: the user still edits their node, and the panel offers a
+        // regenerate button if the old answer is shown.
+        console.error(`[save] could not clear stale ai content: ${staleError.message}`);
+      } else {
+        console.error(
+          `[save] cleared ai content for ${staleNodeIds.length} renamed node(s)`
+        );
+      }
+    }
+
     // Scoped per-user via map ownership + map_id check so a malicious client
     // cannot overwrite nodes from another map.
     const updates = nodes.map((node) =>

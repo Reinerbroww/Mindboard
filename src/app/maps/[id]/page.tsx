@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { getMapWithNodesAndEdges } from "@/lib/supabase/queries";
+import { getMapWithNodesAndEdges, getMapAiContent } from "@/lib/supabase/queries";
 import { Whiteboard } from "@/components/whiteboard/whiteboard";
 import { MapBackLink } from "@/components/whiteboard/map-back-link";
 
@@ -21,7 +21,10 @@ export default async function MapPage({
   } = await getSession();
   if (!user) notFound();
 
-  const data = await getMapWithNodesAndEdges(id);
+  const [data, aiContent] = await Promise.all([
+    getMapWithNodesAndEdges(id),
+    getMapAiContent(id),
+  ]);
   if (!data || data.map.user_id !== user.id) notFound();
 
   const nodes = (data.nodes ?? []).map((node) => ({
@@ -43,6 +46,15 @@ export default async function MapPage({
     relationship: edge.relationship,
   }));
 
+  // Saved AI answers arrive with the board, so a node's explanation is already
+  // there the moment the user clicks it.
+  const savedContent = (aiContent ?? []).map((row) => ({
+    nodeId: row.node_id,
+    kind: row.kind,
+    language: row.language,
+    content: row.content,
+  }));
+
   return (
 <div className="flex h-screen w-screen flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4 sm:px-5">
@@ -58,6 +70,7 @@ export default async function MapPage({
           mapTitle={data.map.title}
           initialNodes={nodes}
           initialEdges={edges}
+          savedContent={savedContent}
         />
       </div>
     </div>

@@ -75,6 +75,25 @@ export const getMapWithNodesAndEdges = cache(async (mapId: string) => {
   };
 });
 
+/**
+ * Stored AI answers for a whole map, loaded with the board so clicking a node
+ * can show a saved explanation without waiting on a request.
+ */
+export const getMapAiContent = cache(async (mapId: string) => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("node_ai_content")
+    .select("node_id, kind, language, content")
+    .eq("map_id", mapId);
+
+  if (error) {
+    // Missing table or transient failure should not block the board itself.
+    console.error(`[supabase] ai content read failed: ${error.message}`);
+    return [];
+  }
+  return data ?? [];
+});
+
 export const getMapMaterial = cache(async (mapId: string) => {
   const supabase = await createClient();
   const { data, error } = await supabase

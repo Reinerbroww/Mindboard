@@ -64,8 +64,8 @@ const MESSAGES = {
     "panel.connectionTakeaway": "Key takeaway",
     "panel.expandCached": "Shown from memory. Expand for more.",
     "expand.empty": "No new concepts were added.",
-    "panel.connectionCached": "Shown from memory. Explain again to refresh.",
-    "panel.regenerate": "Explain again",
+    "panel.connectionCached": "Saved to this map. Generate again for a fresh explanation.",
+    "panel.regenerate": "Generate again",
 
     "connection.root":
       "This is the starting point of the map. Nothing precedes it, so there is no earlier idea to connect it to yet. Expand this node to build the branch that explains what it leads to.",
@@ -181,8 +181,8 @@ const MESSAGES = {
     "panel.connectionTakeaway": "Poin utama",
     "panel.expandCached": "Ditampilkan dari memori. Perluas untuk detail.",
     "expand.empty": "Tidak ada konsep baru yang ditambahkan.",
-    "panel.connectionCached": "Ditampilkan dari memori. Jelaskan lagi untuk menyegarkan.",
-    "panel.regenerate": "Jelaskan lagi",
+    "panel.connectionCached": "Tersimpan di peta ini. Generate lagi untuk penjelasan baru.",
+    "panel.regenerate": "Generate lagi",
 
     "connection.root":
       "Ini adalah titik awal peta. Tidak ada ide sebelumnya yang bisa disambungkan, jadi belum ada hubungan untuk ditampilkan. Perluas node ini untuk membangun cabang yang menjelaskan ke mana ide ini berkembang.",

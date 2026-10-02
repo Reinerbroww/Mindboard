@@ -6,6 +6,8 @@ import { UserFacingError, errorResponse } from "@/lib/api/errors";
 import { AiServiceError } from "@/lib/ai/model";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { getMapMaterial } from "@/lib/supabase/queries";
+import { getStoredNodeContent, saveNodeContent } from "@/lib/supabase/ai-content";
+import { parseConnectionContent } from "@/lib/ai-content";
 import type { ConnectionNote } from "@/lib/connection-note";
 
 export const maxDuration = 60;
@@ -79,7 +81,10 @@ export async function POST(request: Request) {
       parentNode?: { id?: string; title?: string; label?: string; description?: string | null };
       childNode?: { id?: string; title?: string; label?: string; description?: string | null };
       relationship?: string | null;
+      regenerate?: boolean;
     };
+
+    const regenerate = b.regenerate === true;
 
     const mapId = typeof b.mapId === "string" ? b.mapId : null;
     const childId = typeof b.nodeId === "string" ? b.nodeId : typeof b.childNode?.id === "string" ? b.childNode.id : null;
@@ -136,7 +141,7 @@ export async function POST(request: Request) {
       console.error(
         `[EXPLAIN CONNECTION SUCCESS] requestId=${requestId} elapsedMs=${elapsedMs()} language=${language} result=root-concept-no-ai`
       );
-      return NextResponse.json({ connection: rootNote });
+      return NextResponse.json({ connection: rootNote, cached: true });
     }
 
     // Determine relationship from edges if not provided.
@@ -166,9 +171,23 @@ export async function POST(request: Request) {
       .filter((n) => childLabels.includes(n.parent_id as string))
       .map((n) => n.label);
 
+    // Stored answers are keyed by node, kind, and language, so switching the
+    // map language generates a fresh explanation instead of showing the old one.
+    if (!regenerate) {
+      const stored = parseConnectionContent(
+        await getStoredNodeContent(child.id, "connection", language)
+      );
+      if (stored) {
+        console.error(
+          `[EXPLAIN CONNECTION CACHE HIT] requestId=${requestId} elapsedMs=${elapsedMs()} language=${language}`
+        );
+        return NextResponse.json({ connection: stored, cached: true });
+      }
+    }
+
     failureStage = "ai-explain-connection";
     console.error(
-      `[EXPLAIN CONNECTION START] requestId=${requestId} elapsedMs=${elapsedMs()} language=${language}`,
+      `[EXPLAIN CONNECTION START] requestId=${requestId} elapsedMs=${elapsedMs()} language=${language} regenerate=${regenerate ? "yes" : "no"}`,
     );
 
     const connection = await explainConnection({
@@ -187,11 +206,19 @@ export async function POST(request: Request) {
       requestId,
     });
 
+    await saveNodeContent({
+      mapId,
+      nodeId: child.id,
+      kind: "connection",
+      language,
+      content: { connection },
+    });
+
     console.error(
       `[EXPLAIN CONNECTION SUCCESS] requestId=${requestId} elapsedMs=${elapsedMs()} language=${language} hasRelationship=${relationship ? "yes" : "no"} uncertain=${connection.uncertain ? "yes" : "no"}`
     );
 
-    return NextResponse.json({ connection });
+    return NextResponse.json({ connection, cached: false });
   } catch (err) {
     const category = err instanceof AiServiceError ? err.category : "unknown";
     const aiStatus = err instanceof AiServiceError ? err.status ?? "-" : "-";

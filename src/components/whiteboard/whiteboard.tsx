@@ -39,6 +39,20 @@ import { useMapLanguage } from "@/lib/language";
 import { useI18n } from "@/lib/i18n";
 import type { ConnectionNote } from "@/lib/connection-note";
 import type { ExpandedConcept } from "@/lib/ai/expand";
+import {
+  aiContentKey,
+  parseConnectionContent,
+  parseExplainContent,
+  type AiContentKind,
+  type AiContentPayload,
+} from "@/lib/ai-content";
+
+export interface SavedContentEntry {
+  nodeId: string;
+  kind: string;
+  language: string;
+  content: AiContentPayload;
+}
 
 export interface WhiteboardNode {
   id: string;
@@ -63,6 +77,8 @@ interface WhiteboardProps {
   mapTitle: string;
   initialNodes?: WhiteboardNode[];
   initialEdges?: WhiteboardEdge[];
+  /** AI answers already stored for this map, keyed for lookup on node click. */
+  savedContent?: SavedContentEntry[];
 }
 
 /**
@@ -277,6 +293,7 @@ export function Whiteboard({
   mapTitle,
   initialNodes,
   initialEdges,
+  savedContent,
 }: WhiteboardProps) {
   const initial = useMemo(() => {
     const nodes = toFlowNodes(initialNodes ?? []);
@@ -309,6 +326,32 @@ export function Whiteboard({
   const [error, setError] = useState<string | null>(null);
   const [freshNodeIds, setFreshNodeIds] = useState<string[]>([]);
   const [connectionEdgeId, setConnectionEdgeId] = useState<string | null>(null);
+
+  // Answers loaded with the board, plus anything generated in this session.
+  const [contentStore, setContentStore] = useState<Map<string, AiContentPayload>>(
+    () => {
+      const store = new Map<string, AiContentPayload>();
+      (savedContent ?? []).forEach((entry) => {
+        if (entry.kind !== "explain" && entry.kind !== "connection") return;
+        store.set(
+          aiContentKey(entry.nodeId, entry.kind as AiContentKind, entry.language),
+          entry.content
+        );
+      });
+      return store;
+    }
+  );
+
+  const rememberContent = useCallback(
+    (nodeId: string, kind: AiContentKind, content: AiContentPayload) => {
+      setContentStore((current) => {
+        const next = new Map(current);
+        next.set(aiContentKey(nodeId, kind, language), content);
+        return next;
+      });
+    },
+    [language]
+  );
 
   const selectedNode = useMemo(
     () => {
@@ -497,23 +540,20 @@ export function Whiteboard({
     if (!selectedId) return;
     if (!force && (loading || actionInFlight)) return;
     setPanel("explain");
-    setContent("");
     setConnectionNote(null);
     setError(null);
     setActionInFlight("explain");
 
-    const cacheKey = `mb:explain:${mapId}:${selectedId}:${language}`;
+    // A saved answer for this node and map language shows straight away.
     if (!force) {
-      try {
-        const cachedText = localStorage.getItem(cacheKey);
-        if (cachedText) {
-          setContent(cachedText);
-          setIsCached(true);
-          setActionInFlight(null);
-          return;
-        }
-      } catch {
-        // Storage unavailable — fall through to the API.
+      const saved = parseExplainContent(
+        contentStore.get(aiContentKey(selectedId, "explain", language))
+      );
+      if (saved) {
+        setContent(saved);
+        setIsCached(true);
+        setActionInFlight(null);
+        return;
       }
     }
 
@@ -521,19 +561,18 @@ export function Whiteboard({
     setIsCached(false);
     setLoading(true);
     try {
+      // Without `regenerate` the route returns the stored answer for this node
+      // and language, so reopening a node reuses it instead of calling the AI.
       const res = await fetch("/api/explain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mapId, nodeId: selectedId, language }),
+        body: JSON.stringify({ mapId, nodeId: selectedId, language, regenerate: force }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? ui("notify.explainFailed"));
       setContent(data.explanation);
-      try {
-        localStorage.setItem(cacheKey, data.explanation);
-      } catch {
-        // Storage full or unavailable — the answer still shows.
-      }
+      setIsCached(data.cached === true);
+      rememberContent(selectedId, "explain", { explanation: data.explanation });
     } catch (err) {
       setError(err instanceof Error ? err.message : ui("notify.explainFailed"));
     } finally {
@@ -663,7 +702,7 @@ export function Whiteboard({
     }
   }
 
-  async function handleExplainConnection() {
+  async function handleExplainConnection(regenerate = false) {
     if (!selectedId || loading || actionInFlight) return;
     if (!selectedNode) return;
 
@@ -692,17 +731,18 @@ export function Whiteboard({
       return;
     }
 
-    const cacheKey = `mb:connection:${mapId}:${selectedId}:${language}`;
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        setConnectionNote(JSON.parse(cached) as ConnectionNote);
+    // A stored connection guide shows immediately instead of re-running the AI.
+    if (!regenerate) {
+      const saved = parseConnectionContent(
+        contentStore.get(aiContentKey(selectedId, "connection", language))
+      );
+      if (saved) {
+        setConnectionNote(saved);
         setIsCached(true);
+        setLoading(false);
         setActionInFlight(null);
         return;
       }
-    } catch {
-      // Storage unavailable or unreadable — fall through to the API.
     }
 
     setConnectionNote(null);
@@ -718,17 +758,15 @@ export function Whiteboard({
           nodeId: selectedId,
           parentNodeId: parent.id,
           language,
+          regenerate,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? ui("notify.explainConnectionFailed"));
       const note = data.connection as ConnectionNote;
       setConnectionNote(note);
-      try {
-        localStorage.setItem(cacheKey, JSON.stringify(note));
-      } catch {
-        // Storage full or unavailable — the guide still shows.
-      }
+      setIsCached(data.cached === true);
+      rememberContent(selectedId, "connection", { connection: note });
     } catch (err) {
       setError(err instanceof Error ? err.message : ui("notify.explainConnectionFailed"));
     } finally {
@@ -795,7 +833,7 @@ export function Whiteboard({
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={handleExplainConnection}
+                onClick={() => handleExplainConnection()}
                 disabled={loading || !!actionInFlight}
               >
                 <GitBranch className="h-4 w-4" />
@@ -903,17 +941,7 @@ export function Whiteboard({
                       className="text-xs font-medium text-primary hover:underline"
                       onClick={
                         panel === "explain-connection"
-                          ? () => {
-                              try {
-                                localStorage.removeItem(
-                                  `mb:connection:${mapId}:${selectedId}:${language}`
-                                );
-                              } catch {
-                                // Storage unavailable; the request still runs.
-                              }
-                              setIsCached(false);
-                              handleExplainConnection();
-                            }
+                          ? () => handleExplainConnection(true)
                           : () => runExplain(true)
                       }
                     >

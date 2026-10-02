@@ -78,6 +78,8 @@ export const expandInputSchema = z.object({
 export const explainInputSchema = z.object({
   mapId: z.uuid(),
   nodeId: z.uuid(),
+  /** Set by the client to bypass the stored answer and generate a new one. */
+  regenerate: z.boolean().optional(),
 });
 
 export const saveMapGraphSchema = z.object({

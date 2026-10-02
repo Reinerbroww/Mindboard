@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/auth/require-user";
 import { explainConcept } from "@/lib/ai/explain";
 import { explainInputSchema } from "@/lib/validation/schemas";
 import { getMapMaterial } from "@/lib/supabase/queries";
+import { getStoredNodeContent, saveNodeContent } from "@/lib/supabase/ai-content";
+import { parseExplainContent } from "@/lib/ai-content";
 import { UserFacingError, errorResponse } from "@/lib/api/errors";
 import { AiServiceError } from "@/lib/ai/model";
 import { checkRateLimit } from "@/lib/security/rate-limit";
@@ -73,8 +75,24 @@ export async function POST(request: Request) {
       ? (body as { language: "en" | "id" }).language
       : "en";
 
+    // A stored explanation is reused unless the caller explicitly regenerates,
+    // so reopening a node shows the same answer instead of paying for AI again.
+    if (!parsed.data.regenerate) {
+      const stored = parseExplainContent(
+        await getStoredNodeContent(nodeId, "explain", language)
+      );
+      if (stored) {
+        console.error(
+          `[EXPLAIN CACHE HIT] requestId=${requestId} node=${node.label} totalElapsedMs=${Math.round(
+            performance.now() - startedAt
+          )}`,
+        );
+        return NextResponse.json({ explanation: stored, cached: true });
+      }
+    }
+
     console.error(
-      `[EXPLAIN START] requestId=${requestId} node=${node.label} materialLength=${material?.content?.length ?? 0}`,
+      `[EXPLAIN START] requestId=${requestId} node=${node.label} regenerate=${parsed.data.regenerate ? "yes" : "no"} materialLength=${material?.content?.length ?? 0}`,
     );
 
     const explanation = await explainConcept({
@@ -84,13 +102,21 @@ export async function POST(request: Request) {
       requestId,
       language,
     });
+    await saveNodeContent({
+      mapId,
+      nodeId,
+      kind: "explain",
+      language,
+      content: { explanation },
+    });
+
     console.error(
       `[EXPLAIN SUCCESS] requestId=${requestId} totalElapsedMs=${Math.round(
         performance.now() - startedAt
       )}`,
     );
 
-    return NextResponse.json({ explanation });
+    return NextResponse.json({ explanation, cached: false });
   } catch (err) {
     const category = err instanceof AiServiceError ? err.category : "unknown";
     const aiStatus = err instanceof AiServiceError ? err.status ?? "-" : "-";
