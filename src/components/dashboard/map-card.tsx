@@ -5,18 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUpRight, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatDate, useI18n } from "@/lib/i18n";
 
 interface MapCardProps {
   id: string;
   title: string;
   updatedAt: string;
   nodeCount?: number;
-}
-
-function formatDate(date: string) {
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-  }).format(new Date(date));
 }
 
 /**
@@ -80,6 +75,7 @@ function GraphPreview({ nodeCount = 0 }: { nodeCount?: number }) {
 
 export function MapCard({ id, title, updatedAt, nodeCount = 0 }: MapCardProps) {
   const router = useRouter();
+  const { language, t } = useI18n();
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,12 +93,12 @@ export function MapCard({ id, title, updatedAt, nodeCount = 0 }: MapCardProps) {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Failed to delete map.");
+        throw new Error(data.error ?? t("board.deleteFailed"));
       }
 
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete map.");
+      setError(err instanceof Error ? err.message : t("board.deleteFailed"));
       setDeleting(false);
       setConfirming(false);
     }
@@ -123,8 +119,12 @@ export function MapCard({ id, title, updatedAt, nodeCount = 0 }: MapCardProps) {
             </span>
             <span className="mt-1 block text-xs text-muted-foreground">
               {nodeCount > 0
-                ? `${nodeCount} concept${nodeCount === 1 ? "" : "s"} · ${formatDate(updatedAt)}`
-                : `Empty map · ${formatDate(updatedAt)}`}
+                ? `${t(nodeCount === 1 ? "map.concept" : "map.concepts", {
+                    n: nodeCount,
+                  })} · ${t("map.lastEdited", {
+                    date: formatDate(language, updatedAt),
+                  })}`
+                : `${t("dashboard.empty.title")} · ${formatDate(language, updatedAt)}`}
             </span>
           </span>
         </Link>
@@ -132,8 +132,8 @@ export function MapCard({ id, title, updatedAt, nodeCount = 0 }: MapCardProps) {
         <div className="flex items-center gap-2">
           {confirming ? (
             <div className="mb-rise flex items-center gap-1.5">
-              <span className="mr-1 text-xs font-medium text-destructive">
-                Delete map?
+              <span className="mr-1 hidden text-xs font-medium text-destructive sm:inline">
+                {t("board.deleteConfirm")}
               </span>
               <Button
                 variant="destructive"
@@ -145,7 +145,7 @@ export function MapCard({ id, title, updatedAt, nodeCount = 0 }: MapCardProps) {
                 {deleting ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  "Yes, Delete"
+                  t("board.deleteConfirmAction")
                 )}
               </Button>
               <Button
@@ -159,7 +159,7 @@ export function MapCard({ id, title, updatedAt, nodeCount = 0 }: MapCardProps) {
                 }}
                 disabled={deleting}
               >
-                Cancel
+                {t("board.deleteCancel")}
               </Button>
             </div>
           ) : (
@@ -168,8 +168,8 @@ export function MapCard({ id, title, updatedAt, nodeCount = 0 }: MapCardProps) {
                 variant="ghost"
                 size="sm"
                 className="h-8 w-8 p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-                title="Delete map"
-                aria-label={`Delete ${title}`}
+                title={t("board.delete")}
+                aria-label={`${t("board.delete")} — ${title}`}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -180,10 +180,10 @@ export function MapCard({ id, title, updatedAt, nodeCount = 0 }: MapCardProps) {
               </Button>
               <Link
                 href={`/maps/${id}`}
-                aria-label={`Open ${title}`}
+                aria-label={`${t("map.open")} — ${title}`}
                 className="flex items-center gap-1 text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
               >
-                Open
+                {t("map.open")}
                 <ArrowUpRight className="h-4 w-4" />
               </Link>
             </>

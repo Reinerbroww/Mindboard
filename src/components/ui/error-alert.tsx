@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useI18n, type MessageKey } from "@/lib/i18n";
 
 export interface ErrorAlertProps {
   message: string;
@@ -19,113 +20,133 @@ export interface ErrorAlertProps {
   compact?: boolean;
 }
 
+type ErrorKindId =
+  | "generic"
+  | "session"
+  | "busy"
+  | "scanned"
+  | "slow"
+  | "large"
+  | "network"
+  | "server"
+  | "input";
+
 interface ErrorKind {
-  title: string;
+  id: ErrorKindId;
   tone: "danger" | "warning";
   icon: LucideIcon;
-  tips: string[];
+  titleKey: MessageKey;
+  tipKeys: MessageKey[];
 }
 
+/**
+ * Maps a server message onto a stable kind. Only the kind decides the visible
+ * copy, so the rendered text follows the interface language while the server
+ * message stays available underneath for diagnostics.
+ */
 function classify(message: string): ErrorKind {
   const m = message.toLowerCase();
-  const danger: ErrorKind = {
-    title: "Something went wrong",
-    tone: "danger",
-    icon: ShieldAlert,
-    tips: ["Give it another try in a moment.", "If it keeps happening, contact support."],
-  };
 
   if (/sign in again|unauthorized|not authenticated|session|login/i.test(m)) {
     return {
-      title: "Your session has expired",
+      id: "session",
       tone: "warning",
       icon: ShieldAlert,
-      tips: ["Sign in again to continue.", "Then try the action once more."],
+      titleKey: "error.session.title",
+      tipKeys: ["error.session.tip"],
     };
   }
 
   if (/busy right now|try again in a few seconds|too many requests|try again in a minute|quota|rate limit|rate-limited|temporarily unavailable|model .*unavailable/i.test(m)) {
     return {
-      title: "The AI service is busy",
+      id: "busy",
       tone: "warning",
       icon: AlertTriangle,
-      tips: [
-        "Wait a minute or two and try again.",
-        "Free AI access has a daily limit, so it can be unavailable at busy times.",
-        "Using a shorter input makes success more likely.",
-      ],
+      titleKey: "error.busy.title",
+      tipKeys: ["error.busy.tip1", "error.busy.tip2"],
     };
   }
 
   if (/scanned|no selectable text/i.test(m)) {
     return {
-      title: "Scanned PDF isn't supported yet",
+      id: "scanned",
       tone: "warning",
       icon: Info,
-      tips: [
-        "Use a PDF with real text instead of scanned images.",
-        "Or simply copy and paste the text into the box below.",
-      ],
+      titleKey: "error.scanned.title",
+      tipKeys: ["error.scanned.tip1", "error.scanned.tip2"],
     };
   }
 
   if (/server took too long|timed out|timeout|took too long|504|too long to generate|slow to respond/i.test(m)) {
     return {
-      title: "The AI is taking too long",
+      id: "slow",
       tone: "warning",
       icon: Hourglass,
-      tips: [
-        "The AI is busy right now — wait a moment and try again.",
-        "If it keeps happening, try one chapter or section at a time.",
-      ],
+      titleKey: "error.slow.title",
+      tipKeys: ["error.slow.tip1", "error.slow.tip2"],
     };
   }
 
   if (/too large|too big|10 mb|50 mb|reduce the pdf|smaller/i.test(m)) {
     return {
-      title: "Your input is too large",
+      id: "large",
       tone: "warning",
       icon: AlertTriangle,
-      tips: [
-        "Reduce the PDF or text (for example, under 50 MB and 50 pages).",
-        "Try one chapter or section at a time.",
-      ],
+      titleKey: "error.large.title",
+      tipKeys: ["error.large.tip1", "error.large.tip2"],
     };
   }
 
   if (/could not reach|network|connection|offline/i.test(m)) {
     return {
-      title: "Unable to reach the server",
+      id: "network",
       tone: "warning",
       icon: WifiOff,
-      tips: ["Check your internet connection.", "Then hit Retry."],
+      titleKey: "error.network.title",
+      tipKeys: ["error.network.tip1"],
     };
   }
 
   if (/server setup error|api key|gemini_model|google_generative_ai_api_key|contact the administrator|not configured/i.test(m)) {
     return {
-      title: "Temporary server issue",
+      id: "server",
       tone: "danger",
       icon: ShieldAlert,
-      tips: ["Please try again later.", "If it continues, contact the administrator."],
+      titleKey: "error.server.title",
+      tipKeys: ["error.server.tip1", "error.server.tip2"],
     };
   }
 
   if (/only .* supported|invalid|could not be processed|try another document|try again\./i.test(m)) {
     return {
-      title: "Let's fix that input",
+      id: "input",
       tone: "warning",
       icon: AlertTriangle,
-      tips: ["Check what you entered fits the requirements.", "Then try again."],
+      titleKey: "error.input.title",
+      tipKeys: ["error.input.tip1", "error.input.tip2"],
     };
   }
 
-  return danger;
+  return {
+    id: "generic",
+    tone: "danger",
+    icon: ShieldAlert,
+    titleKey: "error.generic.title",
+    tipKeys: ["error.generic.tip1", "error.generic.tip2"],
+  };
 }
 
 export function ErrorAlert({ message, onRetry, compact = false }: ErrorAlertProps) {
+  const { t } = useI18n();
   const kind = classify(message);
   const Icon = kind.icon;
+
+  const retryButton = onRetry ? (
+    <Button size="sm" variant="outline" onClick={onRetry}>
+      <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+      {t("error.retry")}
+    </Button>
+  ) : null;
 
   if (compact) {
     return (
@@ -145,21 +166,16 @@ export function ErrorAlert({ message, onRetry, compact = false }: ErrorAlertProp
               kind.tone === "danger" ? "text-destructive" : "text-primary"
             )}
           />
-          <p className="text-xs font-semibold text-foreground">{kind.title}</p>
+          <p className="text-xs font-semibold text-foreground">
+            {t(kind.titleKey)}
+          </p>
         </div>
 
         <p className="text-[11px] leading-relaxed text-muted-foreground">
-          {kind.tips[0]}
+          {t(kind.tipKeys[0])}
         </p>
 
-        {onRetry && (
-          <div>
-            <Button size="sm" variant="outline" onClick={onRetry}>
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              Try again
-            </Button>
-          </div>
-        )}
+        {retryButton && <div>{retryButton}</div>}
       </div>
     );
   }
@@ -171,7 +187,7 @@ export function ErrorAlert({ message, onRetry, compact = false }: ErrorAlertProp
         "flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start sm:gap-4",
         kind.tone === "danger"
           ? "border-destructive/25 bg-destructive/5"
-          : "border-amber-500/30 bg-amber-500/5"
+          : "border-primary/20 bg-accent/40"
       )}
     >
       <div
@@ -179,39 +195,32 @@ export function ErrorAlert({ message, onRetry, compact = false }: ErrorAlertProp
           "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
           kind.tone === "danger"
             ? "bg-destructive/10 text-destructive"
-            : "bg-amber-500/15 text-amber-600"
+            : "bg-primary/10 text-primary"
         )}
       >
         <Icon className="h-5 w-5" />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <p className="text-sm font-semibold text-foreground">{kind.title}</p>
+        <p className="text-sm font-semibold text-foreground">
+          {t(kind.titleKey)}
+        </p>
 
         <ul className="flex flex-col gap-1">
-          {kind.tips.map((tip) => (
+          {kind.tipKeys.map((tipKey) => (
             <li
-              key={tip}
+              key={tipKey}
               className="flex items-start gap-2 text-xs leading-snug text-muted-foreground"
             >
               <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/60" />
-              {tip}
+              {t(tipKey)}
             </li>
           ))}
         </ul>
 
-        <p className="text-[11px] text-muted-foreground/70">
-          {message}
-        </p>
+        <p className="text-[11px] text-muted-foreground/70">{message}</p>
 
-        {onRetry && (
-          <div className="mt-1">
-            <Button size="sm" variant="outline" onClick={onRetry}>
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              Try again
-            </Button>
-          </div>
-        )}
+        {retryButton && <div className="mt-1">{retryButton}</div>}
       </div>
     </div>
   );

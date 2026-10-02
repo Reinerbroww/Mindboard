@@ -6,6 +6,7 @@ import { UserFacingError, errorResponse } from "@/lib/api/errors";
 import { AiServiceError } from "@/lib/ai/model";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { getMapMaterial } from "@/lib/supabase/queries";
+import type { ConnectionNote } from "@/lib/connection-note";
 
 export const maxDuration = 60;
 const MAX_BODY_BYTES = 16_000;
@@ -118,14 +119,24 @@ export async function POST(request: Request) {
 
     if (!parent) {
       // Deterministic, no AI call: a root concept has no parent relationship.
-      const explanation =
+      const rootNote: ConnectionNote =
         language === "id"
-          ? "Node ini adalah konsep akar, jadi tidak ada hubungan dengan konsep induk yang bisa dijelaskan."
-          : "This node is a root concept, so there is no parent relationship to explain.";
+          ? {
+              overview:
+                "Node ini adalah konsep akar, jadi tidak ada hubungan dengan konsep induk yang bisa dijelaskan.",
+              keyTakeaway:
+                "Perluas node ini untuk membangun cabang pertama dari peta.",
+            }
+          : {
+              overview:
+                "This node is a root concept, so there is no parent relationship to explain.",
+              keyTakeaway:
+                "Expand this node to build the first branch of the map.",
+            };
       console.error(
         `[EXPLAIN CONNECTION SUCCESS] requestId=${requestId} elapsedMs=${elapsedMs()} language=${language} result=root-concept-no-ai`
       );
-      return NextResponse.json({ explanation });
+      return NextResponse.json({ connection: rootNote });
     }
 
     // Determine relationship from edges if not provided.
@@ -145,25 +156,42 @@ export async function POST(request: Request) {
     const material = await getMapMaterial(mapId);
     const materialContent = material?.content ?? "";
 
+    // Siblings and grandchildren give the model enough context to explain the
+    // child's role without guessing.
+    const childLabels = nodeList
+      .filter((n) => n.parent_id === child.id)
+      .map((n) => n.label);
+    const grandchildLabels = nodeList
+      .filter((n) => n.parent_id && childLabels.length > 0)
+      .filter((n) => childLabels.includes(n.parent_id as string))
+      .map((n) => n.label);
+
     failureStage = "ai-explain-connection";
     console.error(
       `[EXPLAIN CONNECTION START] requestId=${requestId} elapsedMs=${elapsedMs()} language=${language}`,
     );
 
-    const explanation = await explainConnection({
+    const connection = await explainConnection({
       parent: { label: parent.label, description: parent.description },
       child: { label: child.label, description: child.description },
       relationship,
+      // The child's own parent, when it differs from the parent being explained
+      // (which happens when the edge came from the client rather than the tree).
+      parentLabel:
+        child.parent_id && child.parent_id !== parent.id
+          ? nodeList.find((n) => n.id === child.parent_id)?.label ?? null
+          : null,
+      childLabels: [...childLabels, ...grandchildLabels],
       material: materialContent,
       language,
       requestId,
     });
 
     console.error(
-      `[EXPLAIN CONNECTION SUCCESS] requestId=${requestId} elapsedMs=${elapsedMs()} language=${language} hasRelationship=${relationship ? "yes" : "no"}`
+      `[EXPLAIN CONNECTION SUCCESS] requestId=${requestId} elapsedMs=${elapsedMs()} language=${language} hasRelationship=${relationship ? "yes" : "no"} uncertain=${connection.uncertain ? "yes" : "no"}`
     );
 
-    return NextResponse.json({ explanation });
+    return NextResponse.json({ connection });
   } catch (err) {
     const category = err instanceof AiServiceError ? err.category : "unknown";
     const aiStatus = err instanceof AiServiceError ? err.status ?? "-" : "-";

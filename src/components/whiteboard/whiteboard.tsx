@@ -11,16 +11,32 @@ import {
   type Node,
   type Edge,
   type NodeMouseHandler,
+  type NodeChange,
+  type OnNodesChange,
 } from "@xyflow/react";
 import { useRouter } from "next/navigation";
-import { Expand, Sparkles, Trash2, GitBranch, X, Check } from "lucide-react";
+import {
+  Check,
+  Compass,
+  Expand,
+  GitBranch,
+  Lightbulb,
+  Quote,
+  Sparkles,
+  Target,
+  Trash2,
+  X,
+} from "lucide-react";
+import type { ReactNode } from "react";
 import { MindboardNode, type MindboardNodeData } from "@/components/whiteboard/mindboard-node";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LanguageToggle } from "@/components/ui/language-toggle";
 import { computeHierarchicalLayout } from "@/lib/layout/dagre";
 import { Button } from "@/components/ui/button";
-import { useLanguage } from "@/lib/language";
+import { useMapLanguage } from "@/lib/language";
+import { useI18n } from "@/lib/i18n";
+import type { ConnectionNote } from "@/lib/connection-note";
 
 export interface WhiteboardNode {
   id: string;
@@ -28,6 +44,9 @@ export interface WhiteboardNode {
   description: string | null;
   level: number;
   parentId: string | null;
+  /** Persisted canvas position; absent for nodes that were never laid out. */
+  positionX?: number | null;
+  positionY?: number | null;
 }
 
 export interface WhiteboardEdge {
@@ -44,13 +63,119 @@ interface WhiteboardProps {
   initialEdges?: WhiteboardEdge[];
 }
 
+/**
+ * Renders the structured connection guide. Each section is skipped when the
+ * model did not provide it, so a partial answer never shows an empty heading.
+ */
+function ConnectionNoteView({ note }: { note: ConnectionNote | null }) {
+  const { t } = useI18n();
+
+  if (!note) {
+    return (
+      <p className="text-sm text-muted-foreground">{t("panel.connectionEmpty")}</p>
+    );
+  }
+
+  const steps = note.howTheyConnect ?? [];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {note.overview && (
+        <section>
+          <SectionHeading icon={<Compass className="h-3.5 w-3.5" />}>
+            {t("panel.connectionOverview")}
+          </SectionHeading>
+          <p className="text-sm leading-relaxed text-foreground/90">
+            {note.overview}
+          </p>
+        </section>
+      )}
+
+      {steps.length > 0 && (
+        <section>
+          <SectionHeading icon={<GitBranch className="h-3.5 w-3.5" />}>
+            {t("panel.connectionSteps")}
+          </SectionHeading>
+          <ol className="flex flex-col gap-1.5">
+            {steps.map((step, index) => (
+              <li
+                key={`${index}-${step.slice(0, 12)}`}
+                className="flex gap-2 text-sm leading-relaxed text-foreground/90"
+              >
+                <span className="mt-0.5 flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-primary">
+                  {index + 1}
+                </span>
+                <span className="min-w-0">{step}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {note.whyItMatters && (
+        <section>
+          <SectionHeading icon={<Lightbulb className="h-3.5 w-3.5" />}>
+            {t("panel.connectionWhy")}
+          </SectionHeading>
+          <p className="text-sm leading-relaxed text-foreground/90">
+            {note.whyItMatters}
+          </p>
+        </section>
+      )}
+
+      {note.example && (
+        <section className="rounded-lg border border-border/70 bg-muted/40 p-3">
+          <SectionHeading icon={<Quote className="h-3.5 w-3.5" />}>
+            {t("panel.connectionExample")}
+          </SectionHeading>
+          <p className="text-sm leading-relaxed text-foreground/90">
+            {note.example}
+          </p>
+        </section>
+      )}
+
+      {note.keyTakeaway && (
+        <section className="flex gap-2.5 rounded-lg border border-primary/15 bg-accent/60 p-3">
+          <Target className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+          <div className="min-w-0">
+            <SectionHeading>{t("panel.connectionTakeaway")}</SectionHeading>
+            <p className="text-sm font-medium leading-relaxed text-foreground">
+              {note.keyTakeaway}
+            </p>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function SectionHeading({
+  icon,
+  children,
+}: {
+  icon?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <h4 className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+      {icon}
+      {children}
+    </h4>
+  );
+}
+
 const nodeTypes = { mindboard: MindboardNode };
 
 function toFlowNodes(nodes: WhiteboardNode[]): Node[] {
   return nodes.map((node) => ({
     id: node.id,
     type: "mindboard",
-    position: { x: 0, y: 0 },
+    // Restore the saved layout. Unpositioned nodes stay at the origin and are
+    // placed by the mount effect below.
+    position: {
+      x: node.positionX ?? 0,
+      y: node.positionY ?? 0,
+    },
     data: {
       label: node.label,
       description: node.description,
@@ -99,7 +224,10 @@ export function Whiteboard({
   }, []);
 
   const router = useRouter();
-  const { language, setLanguage } = useLanguage(mapId);
+  // The interface language drives the UI copy; the map language drives AI output.
+  const { t } = useI18n();
+  const ui = useCallback((key: Parameters<typeof t>[0]) => t(key), [t]);
+  const { language, setLanguage } = useMapLanguage(mapId);
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -109,9 +237,11 @@ export function Whiteboard({
   const [notification, setNotification] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [content, setContent] = useState<string>("");
+  const [connectionNote, setConnectionNote] = useState<ConnectionNote | null>(null);
   const [isCached, setIsCached] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [freshNodeIds, setFreshNodeIds] = useState<string[]>([]);
@@ -198,25 +328,57 @@ export function Whiteboard({
       const res = await fetch(`/api/maps/${mapId}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error("Delete failed.");
+      if (!res.ok) throw new Error(ui("board.deleteFailed"));
       router.push("/dashboard");
       router.refresh();
     } catch {
-      setError("Could not delete this map.");
+      setError(ui("board.deleteFailed"));
       setDeleting(false);
       setConfirmingDelete(false);
     }
   }
 
-  // Run lay-out once after mount so generated maps get positioned.
+  // Automatic layout must never overwrite a saved layout.
+  // - No node has a position yet  -> lay the whole map out.
+  // - Some nodes have positions   -> keep them, and only place the strays
+  //   (e.g. expanded since the last save) underneath their parent.
   useEffect(() => {
     setNodes((current) => {
-      const positioned = computeHierarchicalLayout(current, edges);
-      // Only apply if positions are all zero (not yet laid out or saved).
-      const needsLayout = current.some(
-        (n) => Math.abs(n.position.x) < 1 && Math.abs(n.position.y) < 1
+      const isPlaced = (n: Node) =>
+        Math.abs(n.position.x) >= 1 || Math.abs(n.position.y) >= 1;
+      const strays = current.filter((n) => !isPlaced(n));
+
+      if (strays.length === 0) return current;
+      if (strays.length === current.length) {
+        return computeHierarchicalLayout(current, edges);
+      }
+
+      const placed = new Map(
+        current
+          .filter(isPlaced)
+          .map((n) => [n.id, { ...n, position: { ...n.position } }])
       );
-      return needsLayout ? positioned : current;
+
+      // One pass per depth so a chain of strays lands correctly.
+      let pending = strays;
+      for (let pass = 0; pass < 5 && pending.length > 0; pass++) {
+        const nextPending: Node[] = [];
+        pending.forEach((node) => {
+          const parentEdge = edges.find((e) => e.target === node.id);
+          const parent = parentEdge ? placed.get(parentEdge.source) : undefined;
+          if (!parent) {
+            nextPending.push(node);
+            return;
+          }
+          placed.set(node.id, {
+            ...node,
+            position: { x: parent.position.x, y: parent.position.y + 120 },
+          });
+        });
+        pending = nextPending;
+      }
+
+      return current.map((n) => placed.get(n.id) ?? n);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -237,10 +399,31 @@ export function Whiteboard({
     });
   }, [edges, setNodes]);
 
+  // Mark the board dirty only once a drag ends, so saving reflects the user's
+  // finished arrangement rather than every pointer movement.
+  const handleNodesChange: OnNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const moved = changes.some(
+        (c) =>
+          c.type === "position" &&
+          c.dragging === false &&
+          Number.isFinite(c.position?.x) &&
+          Number.isFinite(c.position?.y)
+      );
+      if (moved) {
+        setDirty(true);
+        setSaved(false);
+      }
+      onNodesChange(changes);
+    },
+    [onNodesChange]
+  );
+
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
     setSelectedId(node.id);
     setPanel(null);
     setContent("");
+    setConnectionNote(null);
     setIsCached(false);
     setError(null);
     setConnectionEdgeId(null);
@@ -250,6 +433,8 @@ export function Whiteboard({
     if (!selectedId) return;
     if (!force && (loading || actionInFlight)) return;
     setPanel("explain");
+    setContent("");
+    setConnectionNote(null);
     setError(null);
     setActionInFlight("explain");
 
@@ -278,7 +463,7 @@ export function Whiteboard({
         body: JSON.stringify({ mapId, nodeId: selectedId, language }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Explain failed.");
+      if (!res.ok) throw new Error(data.error ?? ui("notify.explainFailed"));
       setContent(data.explanation);
       try {
         localStorage.setItem(cacheKey, data.explanation);
@@ -286,7 +471,7 @@ export function Whiteboard({
         // Storage full or unavailable — the answer still shows.
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Explain failed.");
+      setError(err instanceof Error ? err.message : ui("notify.explainFailed"));
     } finally {
       setLoading(false);
       setActionInFlight(null);
@@ -301,6 +486,7 @@ export function Whiteboard({
     if (!selectedId || loading || actionInFlight) return;
     setPanel("expand");
     setContent("");
+    setConnectionNote(null);
     setError(null);
     setLoading(true);
     setActionInFlight("expand");
@@ -311,61 +497,63 @@ export function Whiteboard({
         body: JSON.stringify({ mapId, nodeId: selectedId, language }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Expand failed.");
+      if (!res.ok) throw new Error(data.error ?? ui("notify.expandFailed"));
 
-      const newNodes: WhiteboardNode[] = data.nodes.map(
+      const parentLevel = selectedNode?.data.level ?? 0;
+      const incoming: WhiteboardNode[] = data.nodes.map(
         (n: { id: string; label: string; description?: string | null; level?: number }) => ({
           id: n.id,
           label: n.label,
           description: n.description ?? null,
-          level: n.level ?? (selectedNode?.data.level ?? 0) + 1,
+          level: n.level ?? parentLevel + 1,
           parentId: selectedId,
         })
       );
 
-      setEdges((current) => {
-        const existingEdgeKeys = new Set(
-          current.map((e) => `${e.source}-${e.target}`)
-        );
-        const pending = newNodes.filter(
-          (n) => !existingEdgeKeys.has(`${selectedId}-${n.id}`)
-        );
-        const newEdges = pending.map((n) => ({
+      const existingNodeIds = new Set(nodes.map((n) => n.id));
+      const added = toFlowNodes(
+        incoming.filter((n) => !existingNodeIds.has(n.id))
+      );
+
+      // Only the new branch is positioned; existing nodes keep the arrangement
+      // the user made, so expanding never rearranges the board.
+      const parentPosition = nodes.find((n) => n.id === selectedId)?.position;
+      let cursorY = parentPosition?.y ?? 0;
+      const placed = added.map((node) => {
+        cursorY += 120;
+        return { ...node, position: { x: parentPosition?.x ?? 0, y: cursorY } };
+      });
+
+      const existingEdgeKeys = new Set(edges.map((e) => `${e.source}-${e.target}`));
+      const newEdges = placed
+        .filter((n) => !existingEdgeKeys.has(`${selectedId}-${n.id}`))
+        .map((n) => ({
           id: `${selectedId}-${n.id}`,
           source: selectedId,
           target: n.id,
           type: "smoothstep" as const,
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 14,
-            height: 14,
-          },
+          markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
           label: "includes",
           style: { stroke: "#2F6F5E", strokeWidth: 1.5 },
         }));
 
-        const mergedEdges = [...current, ...newEdges];
-        setNodes((currentNodes) => {
-          const existing = new Set(currentNodes.map((n) => n.id));
-          const added = toFlowNodes(pending).filter((n) => !existing.has(n.id));
-          return computeHierarchicalLayout([...currentNodes, ...added], mergedEdges);
-        });
+      if (placed.length > 0) {
+        setNodes([...nodes, ...placed]);
+        setEdges([...edges, ...newEdges]);
 
         // Entrance + brief emphasis for the newly grown part of the map.
-        if (pending.length > 0) {
-          const ids = pending.map((n) => n.id);
-          setFreshNodeIds(ids);
-          setTimeout(() => {
-            setFreshNodeIds((current) => current.filter((id) => !ids.includes(id)));
-          }, 1400);
-        }
-        return mergedEdges;
-      });
+        const ids = placed.map((n) => n.id);
+        setFreshNodeIds(ids);
+        setTimeout(() => {
+          setFreshNodeIds((current) => current.filter((id) => !ids.includes(id)));
+        }, 1400);
+      }
 
-      setSaved(false);
-      showSuccessNotification(language === "id" ? "Expand berhasil" : "Expanded successfully");
+    setSaved(false);
+      setDirty(true);
+      showSuccessNotification(ui("notify.expanded"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Expand failed.");
+      setError(err instanceof Error ? err.message : ui("notify.expandFailed"));
     } finally {
       setLoading(false);
       setActionInFlight(null);
@@ -392,11 +580,17 @@ export function Whiteboard({
         body: JSON.stringify({ nodes: nodeUpdates }),
       });
 
-      if (!res.ok) throw new Error("Save failed.");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? ui("board.saveFailed"));
+      }
+      // Only clear the dirty flag once the database has confirmed the write.
+      setDirty(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch {
-      setError("Could not save your map.");
+    } catch (err) {
+      // Keep `dirty` true so the user's arrangement is still there to retry.
+      setError(err instanceof Error ? err.message : ui("board.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -414,22 +608,38 @@ export function Whiteboard({
 
     setConnectionEdgeId(parentEdge?.id ?? null);
 
+    setPanel("explain-connection");
+    setContent("");
+    setConnectionNote(null);
+    setError(null);
+
     if (!parent) {
-      setPanel("explain-connection");
-      setContent(
-        language === "id"
-          ? "Ini adalah konsep utama, jadi tidak ada hubungan dengan parent yang bisa dijelaskan."
-          : "This is a root concept, so there is no parent connection to explain."
-      );
-      setError(null);
+      // Root concept: no parent to connect to, so no AI call is needed.
+      setConnectionNote({
+        overview: t("connection.root"),
+        uncertain: true,
+      });
+      setIsCached(false);
       setLoading(false);
       setActionInFlight(null);
       return;
     }
 
-    setPanel("explain-connection");
-    setContent("");
-    setError(null);
+    const cacheKey = `mb:connection:${mapId}:${selectedId}:${language}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        setConnectionNote(JSON.parse(cached) as ConnectionNote);
+        setIsCached(true);
+        setActionInFlight(null);
+        return;
+      }
+    } catch {
+      // Storage unavailable or unreadable — fall through to the API.
+    }
+
+    setConnectionNote(null);
+    setIsCached(false);
     setLoading(true);
     setActionInFlight("explain-connection");
     try {
@@ -444,10 +654,16 @@ export function Whiteboard({
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Explain connection failed.");
-      setContent(data.explanation);
+      if (!res.ok) throw new Error(data.error ?? ui("notify.explainConnectionFailed"));
+      const note = data.connection as ConnectionNote;
+      setConnectionNote(note);
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(note));
+      } catch {
+        // Storage full or unavailable — the guide still shows.
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Explain connection failed.");
+      setError(err instanceof Error ? err.message : ui("notify.explainConnectionFailed"));
     } finally {
       setLoading(false);
       setActionInFlight(null);
@@ -459,7 +675,7 @@ export function Whiteboard({
       <ReactFlow
         nodes={displayNodes}
         edges={displayEdges}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
         onPaneClick={() => {
@@ -507,7 +723,7 @@ export function Whiteboard({
                 disabled={loading || !!actionInFlight}
               >
                 <Sparkles className="h-4 w-4" />
-                Explain
+                {ui("node.explain")}
               </Button>
               <Button
                 variant="secondary"
@@ -516,7 +732,7 @@ export function Whiteboard({
                 disabled={loading || !!actionInFlight}
               >
                 <GitBranch className="h-4 w-4" />
-                Explain Connection
+                {ui("node.explainConnection")}
               </Button>
               <Button
                 variant="secondary"
@@ -526,8 +742,8 @@ export function Whiteboard({
               >
                 <Expand className="h-4 w-4" />
                 {loading && actionInFlight === "expand"
-                  ? (language === "id" ? "Membangkitkan..." : "Generating...")
-                  : "Expand"}
+                  ? `${ui("create.generating")}`
+                  : ui("node.expand")}
               </Button>
             </div>
           </div>
@@ -543,14 +759,14 @@ export function Whiteboard({
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm font-semibold">
                 {panel === "explain"
-                  ? "Explain"
+                  ? ui("panel.explain")
                   : panel === "explain-connection"
-                    ? "Explain Connection"
-                    : "Expand"}
+                    ? ui("panel.explainConnection")
+                    : ui("panel.expand")}
               </span>
               <button
                 type="button"
-                aria-label="Close panel"
+                aria-label={ui("panel.close")}
                 className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 onClick={() => {
                   setPanel(null);
@@ -561,7 +777,15 @@ export function Whiteboard({
               </button>
             </div>
             {loading ? (
-              <div className="flex flex-col gap-2.5">
+              <div
+                className="flex flex-col gap-2.5"
+                role="status"
+                aria-label={
+                  panel === "explain-connection"
+                    ? ui("panel.connectionLoading")
+                    : ui("create.generating")
+                }
+              >
                 <Skeleton className="h-4 w-28" />
                 <Skeleton className="h-3 w-full" />
                 <Skeleton className="h-3 w-11/12" />
@@ -587,20 +811,42 @@ export function Whiteboard({
               />
             ) : (
               <>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-                  {content}
-                </p>
+                {panel === "explain-connection" ? (
+                  <ConnectionNoteView note={connectionNote} />
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+                    {content}
+                  </p>
+                )}
                 {isCached && (
                   <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2">
                     <span className="text-[11px] text-muted-foreground/70">
-                      Shown from memory to save AI usage.
+                      {ui(
+                        panel === "explain-connection"
+                          ? "panel.connectionCached"
+                          : "panel.expandCached"
+                      )}
                     </span>
                     <button
                       type="button"
                       className="text-xs font-medium text-primary hover:underline"
-                      onClick={() => runExplain(true)}
+                      onClick={
+                        panel === "explain-connection"
+                          ? () => {
+                              try {
+                                localStorage.removeItem(
+                                  `mb:connection:${mapId}:${selectedId}:${language}`
+                                );
+                              } catch {
+                                // Storage unavailable; the request still runs.
+                              }
+                              setIsCached(false);
+                              handleExplainConnection();
+                            }
+                          : () => runExplain(true)
+                      }
                     >
-                      Regenerate
+                      {ui("panel.regenerate")}
                     </button>
                   </div>
                 )}
@@ -626,6 +872,8 @@ export function Whiteboard({
           <span className="hidden max-w-[30vw] truncate text-sm font-medium text-foreground/80 sm:block">
             {mapTitle}
           </span>
+          {/* Changes this map's content language only, so AI output for this map
+              follows the user's choice rather than the interface language. */}
           <LanguageToggle
             mapId={mapId}
             language={language}
@@ -633,23 +881,35 @@ export function Whiteboard({
           />
         </div>
         <div className="pointer-events-auto flex items-center gap-2">
-          {saved && (
+          {saved ? (
             <span
               role="status"
               className="mb-rise flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-primary"
             >
               <Check className="h-3 w-3" />
-              Saved
+              {ui("board.saved")}
             </span>
-          )}
-          <Button size="sm" onClick={handleSave} disabled={saving || deleting}>
-            {saving ? "Saving..." : "Save"}
+          ) : dirty ? (
+            <span
+              role="status"
+              className="flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/70" />
+              {ui("board.unsaved")}
+            </span>
+          ) : null}
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving || deleting || !dirty}
+          >
+            {saving ? ui("board.saving") : ui("board.save")}
           </Button>
 
           {confirmingDelete ? (
             <div className="mb-rise flex items-center gap-1.5 rounded-lg border border-destructive/20 bg-card p-1 shadow-sm">
               <span className="hidden px-2 text-xs font-medium text-destructive sm:inline">
-                Delete map?
+                {ui("board.deleteConfirm")}
               </span>
               <Button
                 variant="destructive"
@@ -658,7 +918,9 @@ export function Whiteboard({
                 onClick={handleDeleteMap}
                 disabled={deleting}
               >
-                {deleting ? "Deleting..." : "Yes, Delete"}
+                {deleting
+                  ? ui("board.deleting")
+                  : ui("board.deleteConfirmAction")}
               </Button>
               <Button
                 variant="ghost"
@@ -667,20 +929,20 @@ export function Whiteboard({
                 onClick={() => setConfirmingDelete(false)}
                 disabled={deleting}
               >
-                Cancel
+                {ui("board.deleteCancel")}
               </Button>
             </div>
           ) : (
             <Button
               variant="outline"
               size="sm"
-              aria-label="Delete map"
+              aria-label={ui("board.delete")}
               className="px-2 text-muted-foreground hover:border-destructive/30 hover:text-destructive"
               onClick={() => setConfirmingDelete(true)}
               disabled={saving || deleting}
             >
               <Trash2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Delete</span>
+              <span className="hidden sm:inline">{ui("board.delete")}</span>
             </Button>
           )}
         </div>

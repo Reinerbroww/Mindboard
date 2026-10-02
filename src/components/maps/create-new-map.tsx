@@ -7,56 +7,36 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { Textarea } from "@/components/ui/textarea";
-import { LanguageToggle } from "@/components/ui/language-toggle";
-import { useLanguage, setMapLanguage, type AppLanguage as Language } from "@/lib/language";
+import { LanguageSelector } from "@/components/ui/language-selector";
+import { setMapLanguage, useUiLanguage } from "@/lib/language";
+import { useI18n, type MessageKey } from "@/lib/i18n";
 
 type Phase = "input" | "processing";
 
-const STAGES: Record<Language, string[]> = {
-  en: [
-    "Reading your material...",
-    "Finding key concepts...",
-    "Understanding relationships...",
-    "Building your knowledge map...",
-    "Drawing your mind map...",
-  ],
-  id: [
-    "Membaca materi kamu...",
-    "Mencari konsep utama...",
-    "Memahami hubungan konsep...",
-    "Membangun peta pengetahuan...",
-    "Menggambar mind map...",
-  ],
-};
+const STAGE_KEYS: MessageKey[] = [
+  "stage.understanding",
+  "stage.structuring",
+  "stage.connecting",
+  "stage.completing",
+];
 
-const COPY: Record<Language, Record<string, string>> = {
-  en: {
-    title: "Add your study material",
-    subtitle: "Mindboard will turn it into an interactive mind map.",
-    language: "Language",
-    generate: "Generate Mind Map",
-  },
-  id: {
-    title: "Tambahkan materi belajar",
-    subtitle: "Mindboard akan mengubahnya menjadi mind map interaktif.",
-    language: "Bahasa",
-    generate: "Buat Mind Map",
-  },
-};
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 export function CreateNewMap() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const generatingRef = useRef(false);
-  const { language, setLanguage } = useLanguage();
+  // The interface language is also the default generation language, so a new
+  // map inherits whatever the user last chose in the Dashboard selector.
+  const { language } = useUiLanguage();
+  const { t } = useI18n();
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [phase, setPhase] = useState<Phase>("input");
   const [stageIndex, setStageIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const stages = STAGES[language];
-  const copy = COPY[language];
+  const stages = STAGE_KEYS.map((key) => t(key));
 
   function newRequestId(): string {
     if (typeof globalThis.crypto?.randomUUID === "function") {
@@ -67,10 +47,10 @@ export function CreateNewMap() {
 
   function handleFile(selected: File | null) {
     if (!selected) return;
-    if (selected.size > 50 * 1024 * 1024) {
+    if (selected.size > MAX_FILE_BYTES) {
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      setError("PDF is too large. The maximum file size is 50 MB.");
+      setError(t("create.errorTooLarge"));
       return;
     }
     setFile(selected);
@@ -83,7 +63,7 @@ export function CreateNewMap() {
     const dropped = e.dataTransfer.files?.[0] ?? null;
     if (dropped) {
       if (!dropped.name.toLowerCase().endsWith(".pdf")) {
-        setError("Only PDF files are supported.");
+        setError(t("create.errorFormat"));
         return;
       }
       handleFile(dropped);
@@ -121,7 +101,7 @@ export function CreateNewMap() {
           data: { user },
         } = await supabase.auth.getUser();
         if (!user) {
-          setError("Please sign in again and retry.");
+          setError(t("create.errorSignIn"));
           return;
         }
 
@@ -140,7 +120,7 @@ export function CreateNewMap() {
             return;
           }
         } catch {
-          setError("Could not upload the PDF. Try again.");
+          setError(t("create.errorUpload"));
           return;
         }
 
@@ -156,7 +136,7 @@ export function CreateNewMap() {
       }
 
       if (payload.type === "text" && !text.trim()) {
-        setError("Paste your study material or upload a PDF.");
+        setError(t("create.errorEmpty"));
         return;
       }
 
@@ -198,8 +178,8 @@ export function CreateNewMap() {
         setError(
           data?.error ??
             (res.status === 504 || res.status === 500
-              ? "The server took too long. Try a smaller PDF or shorter text, then retry."
-              : "Something went wrong. Try again.")
+              ? t("create.errorSlow")
+              : t("create.errorGeneric"))
         );
         return;
       }
@@ -207,7 +187,7 @@ export function CreateNewMap() {
       if (!data?.mapId) {
         clearInterval(interval);
         setPhase("input");
-        setError("Something went wrong. Try again.");
+        setError(t("create.errorGeneric"));
         return;
       }
 
@@ -217,9 +197,7 @@ export function CreateNewMap() {
     } catch {
       if (interval) clearInterval(interval);
       setPhase("input");
-      setError(
-        "Could not reach the server. Check your connection and try again."
-      );
+      setError(t("create.errorNetwork"));
     } finally {
       generatingRef.current = false;
     }
@@ -230,7 +208,7 @@ export function CreateNewMap() {
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-24">
         <div className="flex flex-col items-center">
           <h2 className="text-2xl font-semibold tracking-tight">
-            {language === "id" ? "Membuat mind map kamu" : "Creating your map"}
+            {t("create.generating")}
           </h2>
 
           {/* The structure materialising, mirroring the real generation flow. */}
@@ -301,14 +279,16 @@ export function CreateNewMap() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight">
-              {copy.title}
+              {t("create.title")}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">{copy.subtitle}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t("create.subtitle")}
+            </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <LanguageToggle language={language} onLanguageChange={setLanguage} />
+            <LanguageSelector />
             <span className="text-[11px] text-muted-foreground/80">
-              {copy.language}
+              {t("create.languageHint")}
             </span>
           </div>
         </div>
@@ -325,7 +305,7 @@ export function CreateNewMap() {
             <div
               role="button"
               tabIndex={0}
-              aria-label="Upload a PDF"
+              aria-label={t("create.file.drop")}
               onDragOver={(e) => {
                 e.preventDefault();
                 setIsDragging(true);
@@ -358,10 +338,13 @@ export function CreateNewMap() {
                 <>
                   <Upload className="h-8 w-8 text-muted-foreground" />
                   <div className="text-sm font-medium">
-                    Drag &amp; drop your PDF here
+                    {t("create.file.drop")}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    or click to browse files (max 50 MB)
+                    {t("create.file.choose")}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground/80">
+                    {t("create.file.formats")}
                   </div>
                 </>
               )}
@@ -376,12 +359,12 @@ export function CreateNewMap() {
                   if (fileInputRef.current) fileInputRef.current.value = "";
                 }}
               >
-                Remove file
+                {t("create.file.remove")}
               </button>
             )}
             {file && (
               <p className="mt-2 text-center text-xs text-muted-foreground">
-                OR paste text below
+                {t("create.paste")}
               </p>
             )}
           </div>
@@ -389,14 +372,14 @@ export function CreateNewMap() {
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
             <span className="text-xs uppercase tracking-wide text-muted-foreground">
-              OR
+              {t("create.paste")}
             </span>
             <div className="h-px flex-1 bg-border" />
           </div>
 
           <div>
             <Textarea
-              placeholder="Paste your study material here..."
+              placeholder={t("create.paste.placeholder")}
               value={text}
               onChange={(e) => {
                 setText(e.target.value);
@@ -418,7 +401,7 @@ export function CreateNewMap() {
             onClick={handleGenerate}
             disabled={!text.trim() && !file}
           >
-            {copy.generate}
+            {t("create.generate")}
           </Button>
         </div>
       </main>

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 export type AppLanguage = "en" | "id";
 
@@ -7,7 +7,7 @@ export const MAP_LANGUAGE_KEY_PREFIX = "mb:map-language:";
 
 export const LANGUAGE_NAME: Record<AppLanguage, string> = {
   en: "English",
-  id: "Indonesian",
+  id: "Bahasa Indonesia",
 };
 
 export const LANGUAGE_SHORT: Record<AppLanguage, string> = {
@@ -19,76 +19,112 @@ export function parseLanguage(value: unknown): AppLanguage {
   return value === "id" ? "id" : "en";
 }
 
-export function getStoredLanguage(): AppLanguage {
-  if (typeof window === "undefined") return "en";
+/* ------------------------------------------------------------------ *
+ * Shared subscription
+ *
+ * Every hook instance in the tab listens to the same emitter, so a
+ * language change in one component immediately reaches the others.
+ * `useSyncExternalStore` keeps server rendering at "en" (no localStorage)
+ * without a hydration mismatch.
+ * ------------------------------------------------------------------ */
+
+const listeners = new Set<() => void>();
+
+function emit() {
+  listeners.forEach((listener) => listener());
+}
+
+function subscribeLanguage(listener: () => void): () => void {
+  listeners.add(listener);
+
+  const onStorage = (event: StorageEvent) => {
+    if (
+      event.key === null ||
+      event.key === LANGUAGE_STORAGE_KEY ||
+      event.key.startsWith(MAP_LANGUAGE_KEY_PREFIX)
+    ) {
+      emit();
+    }
+  };
+
+  window.addEventListener("storage", onStorage);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function safeGet(key: string): string | null {
+  if (typeof window === "undefined") return null;
   try {
-    return parseLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY));
+    return window.localStorage.getItem(key);
   } catch {
-    return "en";
+    return null;
   }
+}
+
+function safeSet(key: string, value: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable; the choice still applies for this session.
+  }
+}
+
+const serverSnapshot = (): AppLanguage => "en";
+
+/** The application's interface language. */
+export function getStoredLanguage(): AppLanguage {
+  return parseLanguage(safeGet(LANGUAGE_STORAGE_KEY));
 }
 
 export function setStoredLanguage(lang: AppLanguage): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
-  } catch {
-    // Storage unavailable; language still applies for this session.
+  if (parseLanguage(getStoredLanguage()) === lang && safeGet(LANGUAGE_STORAGE_KEY)) {
+    return;
   }
-}
-
-/** Language saved on the map (set at generation time); falls back to global. */
-export function getMapLanguage(mapId: string): AppLanguage {
-  if (typeof window === "undefined") return "en";
-  try {
-    const value = window.localStorage.getItem(
-      `${MAP_LANGUAGE_KEY_PREFIX}${mapId}`
-    );
-    if (value === "en" || value === "id") return value;
-  } catch {
-    // Fall through to the global preference.
-  }
-  return getStoredLanguage();
-}
-
-export function setMapLanguage(mapId: string, lang: AppLanguage): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(`${MAP_LANGUAGE_KEY_PREFIX}${mapId}`, lang);
-    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
-  } catch {
-    // Storage unavailable; ignore.
-  }
+  safeSet(LANGUAGE_STORAGE_KEY, lang);
+  emit();
 }
 
 /**
- * React hook for the app language preference. When `mapId` is provided, the
- * value is initialized from the map's saved language (falling back to the
- * global preference) and every change is persisted to both the map and the
- * global key.
+ * The language a map's content is written in. Stored per map and never
+ * overwritten by a later UI language change; falls back to the UI language
+ * only for maps that have no stored value yet.
  */
-export function useLanguage(mapId?: string) {
-  const [language, setLanguage] = useState<AppLanguage>(() =>
-    mapId ? getMapLanguage(mapId) : getStoredLanguage()
+export function getMapLanguage(mapId: string): AppLanguage {
+  const stored = safeGet(`${MAP_LANGUAGE_KEY_PREFIX}${mapId}`);
+  if (stored === "en" || stored === "id") return stored;
+  return getStoredLanguage();
+}
+
+/** Records a map's content language. Deliberately does not touch the UI language. */
+export function setMapLanguage(mapId: string, lang: AppLanguage): void {
+  safeSet(`${MAP_LANGUAGE_KEY_PREFIX}${mapId}`, lang);
+  emit();
+}
+
+export function useUiLanguage() {
+  const language = useSyncExternalStore(
+    subscribeLanguage,
+    getStoredLanguage,
+    serverSnapshot
   );
+  return { language, setLanguage: setStoredLanguage };
+}
 
-  const changeLanguage = useCallback(
-    (next: AppLanguage) => {
-      setLanguage(next);
-      setStoredLanguage(next);
-      if (mapId) setMapLanguage(mapId, next);
-    },
-    [mapId]
+/**
+ * Content language for one map. AI operations on that map always use this
+ * value, even if the interface language changes later.
+ */
+export function useMapLanguage(mapId: string) {
+  const language = useSyncExternalStore(
+    subscribeLanguage,
+    () => getMapLanguage(mapId),
+    serverSnapshot
   );
-
-  const toggleLanguage = useCallback(() => {
-    setLanguage((prev) => {
-      const next = prev === "en" ? "id" : "en";
-      setStoredLanguage(next);
-      if (mapId) setMapLanguage(mapId, next);
-      return next;
-    });
-  }, [mapId]);
-
-  return { language, setLanguage: changeLanguage, toggleLanguage };
+  return {
+    language,
+    setLanguage: (lang: AppLanguage) => setMapLanguage(mapId, lang),
+  };
 }
