@@ -51,7 +51,7 @@ export const getMapWithNodesAndEdges = cache(async (mapId: string) => {
   const supabase = await createClient();
   const { data: map, error: mapError } = await supabase
     .from("maps")
-    .select("id, user_id, title, created_at, updated_at")
+    .select("id, user_id, title, language, created_at, updated_at")
     .eq("id", mapId)
     .single();
 

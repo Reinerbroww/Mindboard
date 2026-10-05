@@ -71,6 +71,7 @@ export default async function MapPage({
           initialNodes={nodes}
           initialEdges={edges}
           savedContent={savedContent}
+          initialLanguage={data.map.language === "id" ? "id" : "en"}
         />
       </div>
     </div>

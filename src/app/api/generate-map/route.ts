@@ -200,7 +200,12 @@ export async function POST(request: Request) {
       `[MAP SAVE START] requestId=${requestId} elapsedMs=${elapsedMs()}`,
     );
 
-    const mapId = await createMapForUser(supabase, auth.user.id, structure.title);
+    const mapId = await createMapForUser(
+      supabase,
+      auth.user.id,
+      structure.title,
+      language
+    );
     await saveMaterial(supabase, mapId, {
       type: input.type,
       content,

@@ -1,4 +1,8 @@
 import { generateTextWithRetry, truncateMaterialForAi } from "@/lib/ai/model";
+import {
+  beginnerFriendlyExplanation,
+  languageInstruction,
+} from "@/lib/ai/explanation-style";
 
 export async function explainConcept(params: {
   concept: string;
@@ -7,24 +11,18 @@ export async function explainConcept(params: {
   requestId?: string;
   language?: "en" | "id";
 }): Promise<string> {
-  const langInstr =
-    params.language === "id"
-      ? "Generate all user-facing content in Indonesian. Use natural Indonesian terms appropriate for learning."
-      : "Generate all user-facing content in English.";
+  const language = params.language ?? "en";
   const prompt = [
     "You are a patient teacher helping a student with their study material.",
     "",
-    langInstr,
+    languageInstruction(language),
     "",
-    "The student clicked a node in their knowledge map. Explain this concept to them in a simple, friendly way, as you would in a classroom:",
+    beginnerFriendlyExplanation(language),
+    "",
+    "The student clicked a node in their knowledge map. Explain this concept to them as you would in a classroom:",
     "CONCEPT: " + params.concept,
     "",
-    "How to explain:",
-    "- Start with a plain-language definition any student understands.",
-    "- Walk through how it works, step by step, with small concrete examples.",
-    "- Connect it to related ideas so the student sees the bigger picture.",
-    "- End with the key takeaway they should remember.",
-    "- Use clear, warm language. Short sentences. Never talk down, never overload.",
+    "Connect it to related ideas so the student sees the bigger picture.",
     "",
     "About the study material:",
     "- Use the material below as your main source when it covers the concept.",

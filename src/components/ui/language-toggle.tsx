@@ -20,6 +20,10 @@ interface LanguageToggleProps {
   /** Describes what the selection changes, for screen readers. */
   labelKey?: MessageKey;
   className?: string;
+  /** Blocks interaction, e.g. while a language change is still running. */
+  disabled?: boolean;
+  /** Marks the toggle busy so the current language stays visible. */
+  busy?: boolean;
 }
 
 export function LanguageToggle({
@@ -28,6 +32,8 @@ export function LanguageToggle({
   onLanguageChange,
   labelKey,
   className,
+  disabled = false,
+  busy = false,
 }: LanguageToggleProps) {
   const uiLanguage = useUiLanguage();
   const mapLanguage = useMapLanguage(mapId ?? "");
@@ -46,17 +52,25 @@ export function LanguageToggle({
         className
       )}
     >
-      <Languages className="ml-1 h-3.5 w-3.5 text-muted-foreground" />
+      <Languages
+        className={cn(
+          "ml-1 h-3.5 w-3.5",
+          busy ? "animate-pulse text-primary" : "text-muted-foreground"
+        )}
+      />
       {(["en", "id"] as AppLanguage[]).map((lang) => (
         <button
           key={lang}
           type="button"
           onClick={() => setLanguage(lang)}
+          disabled={disabled}
           aria-pressed={language === lang}
+          aria-busy={busy || undefined}
           title={LANGUAGE_LABELS[lang].native}
           className={cn(
             "rounded-full px-2 py-0.5 text-xs font-medium transition-colors",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+            "disabled:cursor-not-allowed disabled:opacity-60",
             language === lang
               ? "bg-primary text-primary-foreground"
               : "text-muted-foreground hover:text-foreground"

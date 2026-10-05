@@ -93,6 +93,10 @@ const MESSAGES = {
 
     "lang.dashboardSelector": "Interface language",
     "lang.mapSelector": "Map content language",
+    "lang.changing": "Changing language...",
+    "lang.changed": "Map language changed",
+    "lang.failed":
+      "Language change could not be completed. Your current map is still safe.",
 
     "stage.understanding": "Understanding your source",
     "stage.structuring": "Structuring the main ideas",
@@ -210,6 +214,10 @@ const MESSAGES = {
 
     "lang.dashboardSelector": "Bahasa antarmuka",
     "lang.mapSelector": "Bahasa isi peta",
+    "lang.changing": "Mengubah bahasa...",
+    "lang.changed": "Bahasa peta berhasil diubah",
+    "lang.failed":
+      "Perubahan bahasa belum berhasil. Peta Anda tetap aman seperti sebelumnya.",
 
     "stage.understanding": "Memahami sumber Anda",
     "stage.structuring": "Menyusun ide utama",
