@@ -43,11 +43,6 @@ function errorMessageOf(err: unknown): string {
   return sanitizeLogValue(text, 200) || "unknown error";
 }
 
-/** Diagnostics only. Never logs API keys, tokens, cookies, or the full material. */
-function safeMaterialPreview(content: string, max = 80): string {
-  return sanitizeLogValue(content, max);
-}
-
 export async function POST(request: Request) {
   const fallbackRequestId =
     globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -150,6 +145,8 @@ export async function POST(request: Request) {
     }
 
     const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+    // Durations only: no keys, no tokens, no document text.
+    const prepareMs = Math.round(performance.now() - startedAt);
     const aiStartAt = performance.now();
     console.error(
       `[MAP GENERATION START] ${[
@@ -158,7 +155,6 @@ export async function POST(request: Request) {
         `inputType=${input.type}`,
         `materialLength=${content.length}`,
         `model=${model}`,
-        `materialPreview=${JSON.stringify(safeMaterialPreview(content))}`,
         `language=${language}`,
       ].join(" ")}`,
     );
@@ -175,6 +171,7 @@ export async function POST(request: Request) {
       requestId,
       language,
     });
+    const aiMs = Math.round(performance.now() - aiStartAt);
 
     console.error(
       `[AI GENERATION SUCCESS] ${[
@@ -196,6 +193,7 @@ export async function POST(request: Request) {
     );
 
     failureStage = "map-save";
+    const saveStartAt = performance.now();
     console.error(
       `[MAP SAVE START] requestId=${requestId} elapsedMs=${elapsedMs()}`,
     );
@@ -224,6 +222,22 @@ export async function POST(request: Request) {
         `elapsedMs=${elapsedMs()}`,
         `mapId=${mapId}`,
         `nodeCount=${structure.nodes.length}`,
+      ].join(" ")}`,
+    );
+
+    // One line per request so a slow run can be attributed to a phase.
+    console.error(
+      `[MAP GENERATION TIMING] ${[
+        `requestId=${requestId}`,
+        `prepare=${prepareMs}ms`,
+        `ai=${aiMs}ms`,
+        `save=${Math.round(performance.now() - saveStartAt)}ms`,
+        `total=${elapsedMs()}ms`,
+        `inputType=${input.type}`,
+        `materialLength=${content.length}`,
+        `nodeCount=${structure.nodes.length}`,
+        `model=${model}`,
+        `language=${language}`,
       ].join(" ")}`,
     );
 
@@ -257,6 +271,9 @@ export async function POST(request: Request) {
         `status=${aiStatus}`,
         `model=${err instanceof AiServiceError ? err.model ?? "-" : "-"}`,
       ].join(" ")}`,
+    );
+    console.error(
+      `[MAP GENERATION TIMING] requestId=${requestId} outcome=failure stage=${failureStage} total=${elapsedMs()}ms`
     );
     return errorResponse(err, "Could not generate your mind map.");
   }

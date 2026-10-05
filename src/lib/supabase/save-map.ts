@@ -1,17 +1,36 @@
 import { createClient } from "@/lib/supabase/server";
 import type { GenerateMapResult } from "@/lib/ai/generate-map";
 
+/** Postgres `undefined_column`. */
+const UNDEFINED_COLUMN = "42703";
+
+function isMissingColumnError(error: { code?: string; message?: string } | null) {
+  return (
+    error?.code === UNDEFINED_COLUMN ||
+    /column .* does not exist/i.test(error?.message ?? "")
+  );
+}
+
 export async function createMapForUser(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   title: string,
   language: "en" | "id" = "en"
 ) {
-  const { data, error } = await supabase
-    .from("maps")
-    .insert({ user_id: userId, title, language })
-    .select("id")
-    .single();
+  const insert = async (row: Record<string, unknown>) =>
+    supabase.from("maps").insert(row).select("id").single();
+
+  let { data, error } = await insert({ user_id: userId, title, language });
+
+  // `maps.language` arrives with migration 0005. Without that column the insert
+  // cannot succeed, so create the map without it and let it default to 'en'
+  // once the migration is applied. Only this one column is tolerated.
+  if (error && isMissingColumnError(error)) {
+    console.error(
+      `[DB] maps.language is missing; creating map without it. Apply supabase/migrations/0005_maps_language.sql. Underlying: ${error.message}`
+    );
+    ({ data, error } = await insert({ user_id: userId, title }));
+  }
 
   if (error || !data) {
     console.error(`[DB] createMapForUser failed. ${error ? `code=${error.code} ${error.message}` : "no row returned"}`);

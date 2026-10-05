@@ -47,15 +47,60 @@ export const getMapGraphSummaries = cache(async (userId: string) => {
   return counts;
 });
 
+/** Postgres `undefined_column`. */
+const UNDEFINED_COLUMN = "42703";
+
+function isMissingColumnError(error: { code?: string; message?: string } | null) {
+  return (
+    error?.code === UNDEFINED_COLUMN ||
+    /column .* does not exist/i.test(error?.message ?? "")
+  );
+}
+
+const MAP_COLUMNS = "id, user_id, title, language, created_at, updated_at";
+const MAP_COLUMNS_WITHOUT_LANGUAGE = "id, user_id, title, created_at, updated_at";
+
 export const getMapWithNodesAndEdges = cache(async (mapId: string) => {
   const supabase = await createClient();
-  const { data: map, error: mapError } = await supabase
-    .from("maps")
-    .select("id, user_id, title, language, created_at, updated_at")
-    .eq("id", mapId)
-    .single();
 
-  if (mapError || !map) return null;
+  const first = await supabase
+    .from("maps")
+    .select(MAP_COLUMNS)
+    .eq("id", mapId)
+    .maybeSingle();
+
+  let map = first.data;
+  let error = first.error;
+
+  // `maps.language` arrives with migration 0005. Until that migration is
+  // applied the column is missing, so fall back to the columns that already
+  // exist and treat the map as English. Only that one column is tolerated;
+  // any other failure is a real problem and must not look like "no map".
+  if (error && isMissingColumnError(error)) {
+    console.error(
+      `[supabase] maps.language is missing; reading map ${mapId} without it. Apply supabase/migrations/0005_maps_language.sql. Underlying: ${error.message}`
+    );
+    const retry = await supabase
+      .from("maps")
+      .select(MAP_COLUMNS_WITHOUT_LANGUAGE)
+      .eq("id", mapId)
+      .maybeSingle();
+
+    if (retry.error) {
+      console.error(`[supabase] getMapWithNodesAndEdges failed: ${retry.error.message}`);
+      throw new Error(retry.error.message);
+    }
+    map = retry.data ? { ...retry.data, language: "en" } : null;
+    error = null;
+  }
+
+  // No row means the map genuinely does not exist (or is not visible to this
+  // user), which is the only case that should become a 404.
+  if (error) {
+    console.error(`[supabase] getMapWithNodesAndEdges failed: ${error.message}`);
+    throw new Error(error.message);
+  }
+  if (!map) return null;
 
   const [nodesResult, edgesResult] = await Promise.all([
     supabase
@@ -67,6 +112,15 @@ export const getMapWithNodesAndEdges = cache(async (mapId: string) => {
       .select("id, map_id, source_node_id, target_node_id, relationship")
       .eq("map_id", mapId),
   ]);
+
+  if (nodesResult.error) {
+    console.error(`[supabase] map nodes read failed: ${nodesResult.error.message}`);
+    throw new Error(nodesResult.error.message);
+  }
+  if (edgesResult.error) {
+    console.error(`[supabase] map edges read failed: ${edgesResult.error.message}`);
+    throw new Error(edgesResult.error.message);
+  }
 
   return {
     map,
