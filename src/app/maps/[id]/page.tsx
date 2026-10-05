@@ -25,8 +25,6 @@ export default async function MapPage({
     getMapWithNodesAndEdges(id),
     getMapAiContent(id),
   ]);
-  // `null` is the only "not found" signal. A database failure throws from the
-  // query above and surfaces as a server error, never as a 404.
   if (!data || data.map.user_id !== user.id) notFound();
 
   const nodes = (data.nodes ?? []).map((node) => ({
@@ -73,7 +71,6 @@ export default async function MapPage({
           initialNodes={nodes}
           initialEdges={edges}
           savedContent={savedContent}
-          initialLanguage={data.map.language === "id" ? "id" : "en"}
         />
       </div>
     </div>

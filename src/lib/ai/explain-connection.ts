@@ -1,10 +1,6 @@
 import { Output } from "ai";
 import { z } from "zod";
 import { generateTextWithRetry, truncateMaterialForAi } from "@/lib/ai/model";
-import {
-  beginnerFriendlyExplanation,
-  languageInstruction,
-} from "@/lib/ai/explanation-style";
 
 export const explainConnectionResultSchema = z.object({
   overview: z.string().min(1).max(600),
@@ -44,12 +40,15 @@ export async function explainConnection({
   language = "en",
   requestId,
 }: ExplainConnectionParams): Promise<ExplainConnectionResult> {
+  const langInstr =
+    language === "id"
+      ? "Write every value in natural Indonesian, appropriate for learning."
+      : "Write every value in natural English.";
+
   const prompt = [
     "You are a patient teacher helping a student understand the relationship between two concepts on a knowledge map.",
     "",
-    languageInstruction(language),
-    "",
-    beginnerFriendlyExplanation(language),
+    langInstr,
     "",
     "Explain ONLY the connection between the two concepts. Do not define each concept separately.",
     "",

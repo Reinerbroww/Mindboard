@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -35,7 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LanguageToggle } from "@/components/ui/language-toggle";
 import { computeHierarchicalLayout } from "@/lib/layout/dagre";
 import { Button } from "@/components/ui/button";
-import { useMapLanguage, type AppLanguage } from "@/lib/language";
+import { useMapLanguage } from "@/lib/language";
 import { useI18n } from "@/lib/i18n";
 import type { ConnectionNote } from "@/lib/connection-note";
 import type { ExpandedConcept } from "@/lib/ai/expand";
@@ -79,8 +79,6 @@ interface WhiteboardProps {
   initialEdges?: WhiteboardEdge[];
   /** AI answers already stored for this map, keyed for lookup on node click. */
   savedContent?: SavedContentEntry[];
-  /** Saved map language from the database; the source of truth for AI output. */
-  initialLanguage?: AppLanguage;
 }
 
 /**
@@ -296,7 +294,6 @@ export function Whiteboard({
   initialNodes,
   initialEdges,
   savedContent,
-  initialLanguage = "en",
 }: WhiteboardProps) {
   const initial = useMemo(() => {
     const nodes = toFlowNodes(initialNodes ?? []);
@@ -309,15 +306,7 @@ export function Whiteboard({
   // The interface language drives the UI copy; the map language drives AI output.
   const { t } = useI18n();
   const ui = useCallback((key: Parameters<typeof t>[0]) => t(key), [t]);
-  const { setLanguage: persistMapLanguage } = useMapLanguage(mapId);
-  // The map's saved language comes from the database, so it survives a reload
-  // and on another device. It drives every AI call for this map.
-  const [language, setMapLanguage] = useState<AppLanguage>(initialLanguage);
-  const [translating, setTranslating] = useState(false);
-  const [languageError, setLanguageError] = useState<string | null>(null);
-  // Guards against a second request while one is already running, since the
-  // selector stays mounted during the change.
-  const translatingRef = useRef(false);
+  const { language, setLanguage } = useMapLanguage(mapId);
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -452,87 +441,6 @@ export function Whiteboard({
       setError(ui("board.deleteFailed"));
       setDeleting(false);
       setConfirmingDelete(false);
-    }
-  }
-
-  /**
-   * Changes the map's content language by translating the node text that
-   * already exists. Node ids, positions, hierarchy, and edges are never touched,
-   * the board stays visible throughout, and the change is persisted server-side
-   * before the UI adopts it. On any failure nothing changes.
-   */
-  async function changeMapLanguage(target: AppLanguage) {
-    if (target === language) return;
-    if (translatingRef.current) return;
-
-    translatingRef.current = true;
-    setTranslating(true);
-    setLanguageError(null);
-
-    try {
-      const res = await fetch("/api/translate-map", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mapId, language: target }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? ui("lang.failed"));
-
-      if (Array.isArray(data.nodes) && data.nodes.length > 0) {
-        const translatedById = new Map<string, { label: string; description: string }>(
-          data.nodes.map((node: { id: string; label: string; description: string }) => [
-            node.id,
-            { label: node.label, description: node.description ?? "" },
-          ])
-        );
-
-        // Only the text of each node changes. Position, parent, level, and id
-        // are carried over untouched, and no layout pass is triggered.
-        setNodes((current) =>
-          current.map((node) => {
-            const translated = translatedById.get(node.id);
-            if (!translated) return node;
-            const nodeData = node.data as unknown as MindboardNodeData;
-            if (
-              nodeData.label === translated.label &&
-              (nodeData.description ?? null) === translated.description
-            ) {
-              return node;
-            }
-            return {
-              ...node,
-              data: {
-                ...nodeData,
-                label: translated.label,
-                description: translated.description || null,
-              },
-            };
-          })
-        );
-      }
-
-      setMapLanguage(target);
-      persistMapLanguage(target);
-
-      // Any open panel still shows text in the previous language, so close it
-      // rather than leaving old-language prose beside translated nodes.
-      setPanel(null);
-      setConnectionEdgeId(null);
-      setContent("");
-      setConnectionNote(null);
-      setExpandedConcepts(null);
-      setIsCached(false);
-      setError(null);
-
-      showSuccessNotification(ui("lang.changed"));
-    } catch (err) {
-      // The board is untouched, so the user can simply try again.
-      setLanguageError(
-        err instanceof Error ? err.message : ui("lang.failed")
-      );
-    } finally {
-      translatingRef.current = false;
-      setTranslating(false);
     }
   }
 
@@ -1047,19 +955,6 @@ export function Whiteboard({
         )}
       </div>
 
-      {/* A failed language change keeps the board visible and offers one retry. */}
-      {languageError && (
-        <div className="pointer-events-none absolute inset-x-3 bottom-16 z-20 flex justify-start sm:inset-x-4">
-          <div className="pointer-events-auto w-[min(92vw,22rem)]">
-            <ErrorAlert
-              compact
-              message={languageError}
-              onRetry={() => changeMapLanguage(language === "en" ? "id" : "en")}
-            />
-          </div>
-        </div>
-      )}
-
       {notification && (
         <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center px-4">
           <div
@@ -1081,18 +976,8 @@ export function Whiteboard({
           <LanguageToggle
             mapId={mapId}
             language={language}
-            onLanguageChange={changeMapLanguage}
-            disabled={translating}
-            busy={translating}
+            onLanguageChange={setLanguage}
           />
-          {translating && (
-            <span
-              role="status"
-              className="text-xs text-muted-foreground"
-            >
-              {ui("lang.changing")}
-            </span>
-          )}
         </div>
         <div className="pointer-events-auto flex items-center gap-2">
           {saved ? (

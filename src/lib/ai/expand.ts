@@ -1,10 +1,6 @@
 import { Output } from "ai";
 import { z } from "zod";
 import { generateTextWithRetry, truncateMaterialForAi } from "@/lib/ai/model";
-import {
-  beginnerFriendlyExplanation,
-  languageInstruction,
-} from "@/lib/ai/explanation-style";
 
 const expandedConceptSchema = z.object({
   id: z.string().min(1),
@@ -51,12 +47,15 @@ export async function expandConcept({
   requestId,
   language = "en",
 }: ExpandParams): Promise<ExpandedConcept[]> {
+  const langInstr =
+    language === "id"
+      ? "Write every user-facing value in natural Indonesian, appropriate for learning."
+      : "Write every user-facing value in natural English.";
+
   const prompt = [
     "You are a patient tutor expanding one concept in a student's knowledge map.",
     "",
-    languageInstruction(language),
-    "",
-    beginnerFriendlyExplanation(language),
+    langInstr,
     "",
     "For every sub-concept you add, explain what it actually means, not just its name.",
     "",
