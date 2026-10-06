@@ -1,6 +1,7 @@
 import { Output } from "ai";
 import { z } from "zod";
 import { generateTextWithRetry, truncateMaterialForAi } from "@/lib/ai/model";
+import { PLAIN_LANGUAGE_STYLE } from "@/lib/ai/explanation-style";
 
 export const explainConnectionResultSchema = z.object({
   overview: z.string().min(1).max(600),
@@ -49,6 +50,8 @@ export async function explainConnection({
     "You are a patient teacher helping a student understand the relationship between two concepts on a knowledge map.",
     "",
     langInstr,
+    "",
+    PLAIN_LANGUAGE_STYLE,
     "",
     "Explain ONLY the connection between the two concepts. Do not define each concept separately.",
     "",

@@ -1,4 +1,5 @@
 import { generateTextWithRetry, truncateMaterialForAi } from "@/lib/ai/model";
+import { PLAIN_LANGUAGE_STYLE } from "@/lib/ai/explanation-style";
 
 export async function explainConcept(params: {
   concept: string;
@@ -15,6 +16,8 @@ export async function explainConcept(params: {
     "You are a patient teacher helping a student with their study material.",
     "",
     langInstr,
+    "",
+    PLAIN_LANGUAGE_STYLE,
     "",
     "The student clicked a node in their knowledge map. Explain this concept to them in a simple, friendly way, as you would in a classroom:",
     "CONCEPT: " + params.concept,

@@ -1,6 +1,7 @@
 import { Output } from "ai";
 import { z } from "zod";
 import { generateTextWithRetry, truncateMaterialForAi } from "@/lib/ai/model";
+import { PLAIN_LANGUAGE_STYLE } from "@/lib/ai/explanation-style";
 
 const expandedConceptSchema = z.object({
   id: z.string().min(1),
@@ -57,12 +58,14 @@ export async function expandConcept({
     "",
     langInstr,
     "",
+    PLAIN_LANGUAGE_STYLE,
+    "",
     "For every sub-concept you add, explain what it actually means, not just its name.",
     "",
     "Fields:",
     "- label: the sub-concept name, 2-6 words.",
     "- description: one short clause (max 15 words) for the node card.",
-    "- detail: 2-3 sentences teaching the concept itself, grounded in the material.",
+    "- detail: 2-3 sentences teaching the concept itself in plain everyday words, grounded in the material.",
     "- whyItMatters: 1-2 sentences on why this concept belongs under the concept being expanded.",
     "- example: optional. A short concrete example. Omit the key entirely when no real example helps.",
     "",
