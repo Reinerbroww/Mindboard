@@ -51,11 +51,18 @@ export const getMapWithNodesAndEdges = cache(async (mapId: string) => {
   const supabase = await createClient();
   const { data: map, error: mapError } = await supabase
     .from("maps")
-    .select("id, user_id, title, created_at, updated_at")
+    .select("id, user_id, title, language, created_at, updated_at")
     .eq("id", mapId)
-    .single();
+    .maybeSingle();
 
-  if (mapError || !map) return null;
+  // No row means the map genuinely does not exist, or is not visible to this
+  // user. That is the only case that should become a 404. A failed query is a
+  // server error: it must never be reported as a missing map.
+  if (mapError) {
+    console.error(`[supabase] getMapWithNodesAndEdges failed: ${mapError.message}`);
+    throw new Error(mapError.message);
+  }
+  if (!map) return null;
 
   const [nodesResult, edgesResult] = await Promise.all([
     supabase
@@ -67,6 +74,15 @@ export const getMapWithNodesAndEdges = cache(async (mapId: string) => {
       .select("id, map_id, source_node_id, target_node_id, relationship")
       .eq("map_id", mapId),
   ]);
+
+  if (nodesResult.error) {
+    console.error(`[supabase] map nodes read failed: ${nodesResult.error.message}`);
+    throw new Error(nodesResult.error.message);
+  }
+  if (edgesResult.error) {
+    console.error(`[supabase] map edges read failed: ${edgesResult.error.message}`);
+    throw new Error(edgesResult.error.message);
+  }
 
   return {
     map,

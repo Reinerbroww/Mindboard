@@ -4,11 +4,12 @@ import type { GenerateMapResult } from "@/lib/ai/generate-map";
 export async function createMapForUser(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
-  title: string
+  title: string,
+  language: "en" | "id" = "en"
 ) {
   const { data, error } = await supabase
     .from("maps")
-    .insert({ user_id: userId, title })
+    .insert({ user_id: userId, title, language })
     .select("id")
     .single();
 

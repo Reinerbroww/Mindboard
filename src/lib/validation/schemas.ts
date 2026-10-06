@@ -82,6 +82,11 @@ export const explainInputSchema = z.object({
   regenerate: z.boolean().optional(),
 });
 
+export const translateMapInputSchema = z.object({
+  mapId: z.uuid(),
+  language: z.enum(["en", "id"]),
+});
+
 export const saveMapGraphSchema = z.object({
   nodes: z
     .array(

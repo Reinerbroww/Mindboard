@@ -19,3 +19,17 @@ export const PLAIN_LANGUAGE_STYLE = [
   "- Never talk down to the reader. Do not use words like obvious, simple, just, or easy.",
   "- Accuracy comes first. If plain wording would change the meaning, keep the precise wording and explain it plainly instead.",
 ].join("\n");
+
+/** Human-readable name of a map content language, for prompt wording. */
+export function languageName(language: "en" | "id"): string {
+  return language === "id" ? "Indonesian (Bahasa Indonesia)" : "English";
+}
+
+/** Same plain-language intent as the teaching prompts, for post-creation work. */
+export function languageInstruction(language: "en" | "id"): string {
+  return (
+    language === "id"
+      ? "Write every user-facing value in natural Indonesian, using simple everyday words a student understands."
+      : "Write every user-facing value in natural English, using simple everyday words a student understands."
+  );
+}
