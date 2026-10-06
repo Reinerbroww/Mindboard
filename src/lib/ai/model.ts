@@ -5,9 +5,9 @@ const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_FALLBACK_MODEL = "gemini-3.8-flash";
 
 /**
- * Hard cap for a single AI attempt. A single map generation uses at most two
- * attempts (primary + one fallback), so this bounds worst-case total AI time to
- * roughly 44s and keeps the request well inside the Vercel runtime limit.
+ * Hard cap for a single AI attempt. Each attempt can be a different model in
+ * the configured pool, so worst-case total AI time is attempt count x this
+ * value, kept within the `maxDuration` budget of the AI routes.
  */
 export const AI_ATTEMPT_TIMEOUT_MS = 22_000;
 
@@ -23,9 +23,13 @@ export function createAiModel(modelId?: string) {
 }
 
 /**
- * Returns the ordered, de-duplicated model list for ONE generation:
- * the primary model and at most one known-valid fallback. Fallbacks come from
- * GEMINI_MODELS; when unset, a safe fallback defined in code is used.
+ * Returns the ordered, de-duplicated model list for ONE generation: the primary
+ * model first, then every fallback from GEMINI_MODELS in the order they are
+ * listed, and only if that env var is unset a single code-defined fallback.
+ *
+ * Keeping the order user-controlled matters for free-tier quotas: each model
+ * has its own daily request budget, so a model whose quota is exhausted should
+ * be placed last (or removed) instead of being the first fallback.
  */
 export function getAiModelIds(): string[] {
   const primary = (process.env.GEMINI_MODEL || DEFAULT_MODEL).trim();
@@ -36,9 +40,11 @@ export function getAiModelIds(): string[] {
 
   const codeFallback =
     primary === DEFAULT_FALLBACK_MODEL ? DEFAULT_MODEL : DEFAULT_FALLBACK_MODEL;
-  const firstFallback = configuredFallbacks[0] ?? codeFallback;
+  const candidates = configuredFallbacks.length
+    ? configuredFallbacks
+    : [codeFallback];
 
-  return Array.from(new Set([primary, firstFallback].filter(Boolean)));
+  return Array.from(new Set([primary, ...candidates].filter(Boolean)));
 }
 
 export function isTransientAiError(err: unknown): boolean {
